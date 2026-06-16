@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes" />
+<title>Camp Kabeyun — Alton Bay Wind</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  :root{ --ink:#0d2233; --panel:rgba(255,255,255,0.94); --accent:#1d6fb8; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; height:100%; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:var(--ink); }
+  #map{ position:absolute; inset:0; background:#a9d3e8; }
+  .card{ background:var(--panel); border-radius:14px; box-shadow:0 2px 12px rgba(0,0,0,0.18); backdrop-filter:blur(6px); }
+  #readout{ position:absolute; top:12px; left:12px; z-index:1000; padding:12px 14px; min-width:172px; }
+  #readout .ttl{ font-size:12px; letter-spacing:.04em; text-transform:uppercase; color:#5a7187; margin-bottom:6px; }
+  #readout .wind{ font-size:30px; font-weight:600; line-height:1; }
+  #readout .wind small{ font-size:15px; font-weight:500; color:#5a7187; }
+  #readout .row{ display:flex; align-items:center; gap:8px; margin-top:8px; font-size:14px; color:#33485c; }
+  #readout .arrow{ display:inline-block; width:26px; height:26px; transition:transform .25s ease; }
+  #readout .gust{ margin-top:4px; font-size:13px; color:#5a7187; }
+  #brand{ position:absolute; top:12px; right:12px; z-index:1000; padding:8px 12px; font-size:13px; font-weight:600; }
+  #brand span{ font-weight:400; color:#5a7187; display:block; font-size:11px; }
+  #timebar{ position:absolute; left:12px; right:12px; bottom:14px; z-index:1000; padding:12px 14px; }
+  #timebar .tline{ display:flex; align-items:center; gap:10px; }
+  #play{ flex:none; width:40px; height:40px; border-radius:50%; border:none; background:var(--accent); color:#fff; font-size:17px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+  #play:active{ transform:scale(.94); }
+  #slider{ flex:1; -webkit-appearance:none; appearance:none; height:5px; border-radius:4px; background:#cdd9e2; outline:none; }
+  #slider::-webkit-slider-thumb{ -webkit-appearance:none; width:22px; height:22px; border-radius:50%; background:var(--accent); border:3px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.3); }
+  #slider::-moz-range-thumb{ width:22px; height:22px; border-radius:50%; background:var(--accent); border:3px solid #fff; }
+  #thour{ flex:none; min-width:78px; text-align:right; font-size:15px; font-weight:600; }
+  #tdate{ margin-top:6px; font-size:12px; color:#5a7187; text-align:center; }
+  #coords{ position:absolute; left:12px; bottom:96px; z-index:1000; padding:8px 11px; font-size:11px; color:#33485c; max-width:230px; display:none; }
+  #coords b{ color:var(--ink); }
+  .windarrow{ transition:transform .25s ease, opacity .25s ease; }
+  .leaflet-div-icon{ background:transparent; border:none; }
+  .pin{ font-size:26px; line-height:1; filter:drop-shadow(0 1px 2px rgba(0,0,0,.4)); cursor:grab; }
+  .pin.small{ font-size:15px; }
+  .lbl{ background:var(--panel); padding:2px 7px; border-radius:8px; font-size:12px; font-weight:600; box-shadow:0 1px 4px rgba(0,0,0,.2); white-space:nowrap; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="readout" class="card">
+  <div class="ttl">Alton Bay wind</div>
+  <div class="wind"><span id="spd">—</span> <small>kn</small></div>
+  <div class="row"><svg class="arrow" id="arrow" viewBox="0 0 24 24"><path d="M12 2 L17 13 L12 10.5 L7 13 Z" fill="#1d6fb8"/></svg><span id="dir">—</span></div>
+  <div class="gust">gusts to <span id="gst">—</span> kn</div>
+</div>
+
+<div id="brand" class="card">Camp Kabeyun<span>Daily sailing wind</span></div>
+
+<div id="coords" class="card"><b>Drag the pins</b> to place them exactly, then tell Claude:<br><span id="coordtext"></span></div>
+
+<div id="timebar" class="card">
+  <div class="tline">
+    <button id="play" aria-label="Play through the day">▶</button>
+    <input type="range" id="slider" min="0" max="23" value="12" step="1" />
+    <div id="thour">—</div>
+  </div>
+  <div id="tdate">loading forecast…</div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function(){
+  var DEFAULT_CAMP = [43.4866, -71.2247];
+  var DEFAULT_ISLAND = [43.4892, -71.2208];
+  var saved = {};
+  try { saved = JSON.parse(localStorage.getItem('kabeyun_pins')||'{}'); } catch(e){}
+  var campLL = saved.camp || DEFAULT_CAMP;
+  var islandLL = saved.island || DEFAULT_ISLAND;
+
+  var map = L.map('map', { zoomControl:true, attributionControl:false }).setView(campLL, 13);
+
+  var topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom:17, subdomains:'abc' });
+  var sat  = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom:18 });
+  var street = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19, subdomains:'abc' });
+  topo.addTo(map);
+  L.control.layers({ 'Topographic': topo, 'Satellite': sat, 'Street': street }, null, { position:'topright', collapsed:true }).addTo(map);
+
+  function pin(html, cls){ return L.divIcon({ className:'', html:'<div class="pin '+(cls||'')+'">'+html+'</div>', iconSize:[28,28], iconAnchor:[14,26] }); }
+  var camp = L.marker(campLL, { icon: pin('⛵'), draggable:true }).addTo(map);
+  camp.bindTooltip('Camp Kabeyun (JVN)', { permanent:true, direction:'right', className:'lbl', offset:[10,-10] });
+  var island = L.marker(islandLL, { icon: pin('•','small'), draggable:true }).addTo(map);
+  island.bindTooltip('Little Island', { permanent:true, direction:'right', className:'lbl', offset:[8,-6] });
+
+  var coordsBox = document.getElementById('coords');
+  var coordText = document.getElementById('coordtext');
+  function showCoords(){
+    var c = camp.getLatLng(), i = island.getLatLng();
+    coordsBox.style.display='block';
+    coordText.innerHTML = 'Camp = '+c.lat.toFixed(5)+', '+c.lng.toFixed(5)+'<br>Little Island = '+i.lat.toFixed(5)+', '+i.lng.toFixed(5);
+    localStorage.setItem('kabeyun_pins', JSON.stringify({ camp:[c.lat,c.lng], island:[i.lat,i.lng] }));
+  }
+  camp.on('drag dragend', showCoords);
+  island.on('drag dragend', showCoords);
+
+  // Wind-arrow grid over the water
+  var arrows = [];
+  function buildGrid(){
+    arrows.forEach(function(a){ map.removeLayer(a.marker); });
+    arrows = [];
+    var b = { latMin:43.435, latMax:43.560, lonMin:-71.300, lonMax:-71.175 };
+    var rows=7, cols=7;
+    for(var r=0;r<rows;r++){
+      for(var c=0;c<cols;c++){
+        var lat = b.latMin + (b.latMax-b.latMin)*(r+0.5)/rows;
+        var lon = b.lonMin + (b.lonMax-b.lonMin)*(c+0.5)/cols;
+        var ic = L.divIcon({ className:'', html:'<svg class="windarrow" width="22" height="22" viewBox="0 0 24 24" style="opacity:.55"><path d="M12 3 L12 19 M12 3 L8 8 M12 3 L16 8" stroke="#0d4f86" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>', iconSize:[22,22], iconAnchor:[11,11] });
+        var m = L.marker([lat,lon], { icon:ic, interactive:false, keyboard:false }).addTo(map);
+        arrows.push({ marker:m });
+      }
+    }
+  }
+  buildGrid();
+
+  var hourly = null;
+  function compass(deg){ var d=['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW']; return d[Math.round(deg/22.5)%16]; }
+  function colorFor(spd){ if(spd<4)return '#7fb2d6'; if(spd<8)return '#2f8fd6'; if(spd<13)return '#1565a8'; if(spd<18)return '#b8860b'; return '#c0392b'; }
+
+  function render(h){
+    document.getElementById('thour').textContent = label(h);
+    if(!hourly){ return; }
+    var spd = Math.round(hourly.wind[h]);
+    var gst = Math.round(hourly.gust[h]);
+    var dir = hourly.dir[h];
+    document.getElementById('spd').textContent = spd;
+    document.getElementById('gst').textContent = gst;
+    document.getElementById('dir').textContent = compass(dir)+' · '+Math.round(dir)+'°';
+    document.getElementById('arrow').style.transform = 'rotate('+(dir+180)+'deg)';
+    document.querySelector('#readout .wind').style.color = colorFor(spd);
+    var rot = (dir+180);
+    arrows.forEach(function(a){
+      var el = a.marker.getElement(); if(!el) return;
+      var svg = el.querySelector('svg');
+      if(svg){ svg.style.transform='rotate('+rot+'deg)'; svg.style.opacity = Math.min(0.85, 0.3 + spd/25); svg.querySelector('path').setAttribute('stroke', colorFor(spd)); }
+    });
+  }
+
+  function label(h){ var ap = h<12?'AM':'PM'; var hh = h%12; if(hh===0)hh=12; return hh+' '+ap; }
+
+  var slider = document.getElementById('slider');
+  slider.addEventListener('input', function(){ render(parseInt(this.value,10)); });
+
+  var playing=false, timer=null;
+  var btn=document.getElementById('play');
+  btn.addEventListener('click', function(){
+    playing=!playing; btn.textContent = playing?'⏸':'▶';
+    if(playing){ timer=setInterval(function(){ var v=(parseInt(slider.value,10)+1)%24; slider.value=v; render(v); }, 550); }
+    else { clearInterval(timer); }
+  });
+
+  function fetchWind(){
+    var c = camp.getLatLng();
+    var url = 'https://api.open-meteo.com/v1/forecast?latitude='+c.lat.toFixed(4)+'&longitude='+c.lng.toFixed(4)+
+      '&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m&wind_speed_unit=kn&timezone=America/New_York&forecast_days=1';
+    fetch(url).then(function(r){return r.json();}).then(function(d){
+      hourly = { time:d.hourly.time, wind:d.hourly.wind_speed_10m, gust:d.hourly.wind_gusts_10m, dir:d.hourly.wind_direction_10m };
+      var dt = new Date(d.hourly.time[0]);
+      var opts = { weekday:'long', month:'long', day:'numeric' };
+      document.getElementById('tdate').textContent = dt.toLocaleDateString('en-US', opts) + ' · forecast in knots';
+      var now = new Date();
+      var startH = Math.min(Math.max(now.getHours(),6),18);
+      slider.value = startH; render(startH);
+    }).catch(function(){
+      document.getElementById('tdate').textContent = 'Wind data unavailable — pan/zoom still works';
+    });
+  }
+  fetchWind();
+  camp.on('dragend', fetchWind);
+})();
+</script>
+</body>
+</html>
