@@ -64,10 +64,10 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 (function(){
-  var DEFAULT_CAMP = [43.4866, -71.2247];
-  var DEFAULT_ISLAND = [43.4892, -71.2208];
+  var DEFAULT_CAMP = [43.52598, -71.25059];
+  var DEFAULT_ISLAND = [43.52820, -71.25560];
   var saved = {};
-  try { saved = JSON.parse(localStorage.getItem('kabeyun_pins')||'{}'); } catch(e){}
+  try { saved = JSON.parse(localStorage.getItem('kabeyun_pins_v2')||'{}'); } catch(e){}
   var campLL = saved.camp || DEFAULT_CAMP;
   var islandLL = saved.island || DEFAULT_ISLAND;
 
@@ -91,7 +91,7 @@
     var c = camp.getLatLng(), i = island.getLatLng();
     coordsBox.style.display='block';
     coordText.innerHTML = 'Camp = '+c.lat.toFixed(5)+', '+c.lng.toFixed(5)+'<br>Little Island = '+i.lat.toFixed(5)+', '+i.lng.toFixed(5);
-    localStorage.setItem('kabeyun_pins', JSON.stringify({ camp:[c.lat,c.lng], island:[i.lat,i.lng] }));
+    localStorage.setItem('kabeyun_pins_v2', JSON.stringify({ camp:[c.lat,c.lng], island:[i.lat,i.lng] }));
   }
   camp.on('drag dragend', showCoords);
   island.on('drag dragend', showCoords);
