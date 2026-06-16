@@ -18,6 +18,7 @@
   #map{ position:absolute; inset:0; background:#0a1119; }
   .leaflet-container{ background:#0a1119; }
   .leaflet-overlay-pane canvas{ opacity:.6; }
+  body.zooming .leaflet-overlay-pane canvas{ visibility:hidden; }
 
   .glass{ background:var(--glass); border:1px solid var(--glass-brd); border-radius:18px;
           box-shadow:0 8px 30px rgba(0,0,0,.45); backdrop-filter:blur(16px) saturate(1.2); -webkit-backdrop-filter:blur(16px) saturate(1.2); }
@@ -44,6 +45,25 @@
   #layers button{ border:none; background:transparent; color:var(--ink-dim); font-family:inherit; font-size:12px; font-weight:600;
                   padding:7px 11px; border-radius:12px; cursor:pointer; transition:.15s; }
   #layers button.on{ background:var(--accent); color:#04222a; }
+
+  /* Overlay toggles */
+  #overlays{ position:absolute; top:150px; right:14px; z-index:1000; display:flex; flex-direction:column; padding:5px; gap:4px; width:128px; }
+  #overlays button{ border:none; background:transparent; color:var(--ink); font-family:inherit; font-size:12px; font-weight:600;
+                    padding:9px 11px; border-radius:12px; cursor:pointer; display:flex; align-items:center; gap:8px; transition:.15s; text-align:left; }
+  #overlays button .ic{ width:9px; height:9px; border-radius:50%; border:1.5px solid var(--ink-dim); flex:none; }
+  #overlays button.on{ background:rgba(255,255,255,.08); }
+  #overlays button.on.depth .ic{ background:#3a9ad9; border-color:#3a9ad9; }
+  #overlays button.on.course .ic{ background:#57e08a; border-color:#57e08a; }
+
+  /* Depth legend */
+  #depthlegend{ position:absolute; right:14px; bottom:104px; z-index:1000; padding:10px 12px; width:128px; display:none; }
+  #depthlegend.show{ display:block; }
+  #depthlegend .lbl{ font-size:10px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:7px; }
+  #depthlegend .bar{ height:8px; border-radius:4px; background:linear-gradient(90deg,#cde6f5,#79c0e6,#2e83c4,#154e8a,#061d3a); }
+  #depthlegend .ticks{ display:flex; justify-content:space-between; font-size:10px; color:var(--ink-dim); margin-top:4px; }
+
+  .mark-badge{ display:flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:50%;
+               background:#ff8c3a; border:2px solid #fff; color:#3a1c00; font-size:12px; font-weight:700; box-shadow:0 2px 8px rgba(0,0,0,.5); }
 
   /* Legend */
   #legend{ position:absolute; right:14px; bottom:104px; z-index:1000; padding:10px 12px; width:128px; }
@@ -105,6 +125,17 @@
   <button data-l="topo">Topo</button>
 </div>
 
+<div id="overlays" class="glass">
+  <button id="t-depth" class="depth"><span class="ic"></span>Lake depth</button>
+  <button id="t-course" class="course"><span class="ic"></span>Course spots</button>
+</div>
+
+<div id="depthlegend" class="glass">
+  <div class="lbl">Depth · feet</div>
+  <div class="bar"></div>
+  <div class="ticks"><span>0</span><span>30</span><span>100+</span></div>
+</div>
+
 <div id="legend" class="glass">
   <div class="lbl">Wind · knots</div>
   <div class="bar"></div>
@@ -140,6 +171,9 @@
     });
   });
 
+  map.on('movestart zoomstart', function(){ document.body.classList.add('zooming'); });
+  map.on('moveend zoomend', function(){ document.body.classList.remove('zooming'); });
+
   var campIcon = L.divIcon({ className:'', iconSize:[38,38], iconAnchor:[19,19], html:
     '<div class="camp-badge"><div class="ring"></div><div class="dot">'+
     '<svg viewBox="0 0 24 24" fill="none"><path d="M12 3 L12 14 L4 14 Z" fill="#46d6e6"/>'+
@@ -147,6 +181,68 @@
     '<path d="M3 16 L21 16 L18.5 20 L5.5 20 Z" fill="#eaf3f7"/></svg></div></div>' });
   L.marker(CAMP, { icon:campIcon }).addTo(map)
     .bindTooltip('Camp Kabeyun', { permanent:true, direction:'right', className:'camp-lbl', offset:[16,0] });
+
+  // ---- Depth (bathymetry) + course-placement overlays ----
+  map.createPane('bathy'); map.getPane('bathy').style.zIndex = 250;
+  map.createPane('course'); map.getPane('course').style.zIndex = 460;
+
+  function depthColor(d){
+    var s=[[0,'#cde6f5'],[3,'#a6d6ee'],[6,'#79c0e6'],[10,'#4ea3d9'],[15,'#2e83c4'],[20,'#1f66a8'],[30,'#154e8a'],[45,'#0e3a6b'],[65,'#0a2b50'],[100,'#061d3a']];
+    var c=s[0][1]; for(var i=0;i<s.length;i++){ if(d>=s[i][0]) c=s[i][1]; } return c;
+  }
+  function midDepth(p){ return (p.a+p.b)/2; }
+  function goodForMark(p){ return p.b>=8 && p.a<=30; }   // band overlaps the 8–30 ft anchorable range
+
+  function dest(lat,lon,brng,dm){
+    var R=6371000, br=brng*Math.PI/180, la=lat*Math.PI/180, lo=lon*Math.PI/180, dr=dm/R;
+    var la2=Math.asin(Math.sin(la)*Math.cos(dr)+Math.cos(la)*Math.sin(dr)*Math.cos(br));
+    var lo2=lo+Math.atan2(Math.sin(br)*Math.sin(dr)*Math.cos(la), Math.cos(dr)-Math.sin(la)*Math.sin(la2));
+    return [la2*180/Math.PI, lo2*180/Math.PI];
+  }
+  var COURSE_CENTER = dest(CAMP[0], CAMP[1], 20, 700);   // ~700 m NNE of camp, into the open bay
+
+  var bathyData=null, depthLayer=null, courseGood=null, courseAxisG=null, depthOn=false, courseOn=false;
+
+  function ensureBathy(cb){
+    if(bathyData){ cb(); return; }
+    fetch('./bathy.geojson').then(function(r){return r.json();}).then(function(d){ bathyData=d; cb(); })
+      .catch(function(){ console.warn('depth data unavailable'); });
+  }
+  function buildDepth(){
+    depthLayer = L.geoJSON(bathyData, { pane:'bathy', style:function(f){
+      return { stroke:false, fillColor:depthColor(midDepth(f.properties)), fillOpacity:0.8 };
+    }});
+  }
+  function buildCourseGood(){
+    courseGood = L.geoJSON(bathyData, { pane:'course', filter:function(f){ return goodForMark(f.properties); },
+      style:{ stroke:false, fillColor:'#57e08a', fillOpacity:0.30 } });
+  }
+  function updateAxis(dir){
+    if(courseAxisG){ map.removeLayer(courseAxisG); }
+    var half=360;
+    var wind=dest(COURSE_CENTER[0],COURSE_CENTER[1], dir, half);
+    var lee =dest(COURSE_CENTER[0],COURSE_CENTER[1], (dir+180)%360, half);
+    var axis=L.polyline([wind,lee], { pane:'course', color:'#fff', weight:2, dashArray:'6 7', opacity:.92 });
+    var wM=L.marker(wind, { pane:'course', icon:L.divIcon({className:'',iconSize:[30,30],iconAnchor:[15,15],html:'<div class="mark-badge">W</div>'}) }).bindTooltip('Windward', {direction:'top',className:'camp-lbl'});
+    var lM=L.marker(lee,  { pane:'course', icon:L.divIcon({className:'',iconSize:[30,30],iconAnchor:[15,15],html:'<div class="mark-badge">L</div>'}) }).bindTooltip('Leeward', {direction:'bottom',className:'camp-lbl'});
+    courseAxisG=L.layerGroup([axis,wM,lM]).addTo(map);
+  }
+  function curDir(){ var h=parseInt(document.getElementById('slider').value,10); return campH?campH.dir[h]:270; }
+
+  document.getElementById('t-depth').addEventListener('click', function(){
+    var b=this; ensureBathy(function(){
+      depthOn=!depthOn; b.classList.toggle('on',depthOn);
+      document.getElementById('depthlegend').classList.toggle('show',depthOn);
+      if(depthOn){ if(!depthLayer) buildDepth(); depthLayer.addTo(map); } else if(depthLayer){ map.removeLayer(depthLayer); }
+    });
+  });
+  document.getElementById('t-course').addEventListener('click', function(){
+    var b=this; ensureBathy(function(){
+      courseOn=!courseOn; b.classList.toggle('on',courseOn);
+      if(courseOn){ if(!courseGood) buildCourseGood(); courseGood.addTo(map); updateAxis(curDir()); }
+      else { if(courseGood) map.removeLayer(courseGood); if(courseAxisG){ map.removeLayer(courseAxisG); courseAxisG=null; } }
+    });
+  });
 
   // ---- Wind grid for particle field ----
   var latN=44.080, latS=42.980, lonW=-71.980, lonE=-70.620, N=9;
@@ -179,6 +275,7 @@
       document.getElementById('gst').textContent=gst;
       document.getElementById('dir').textContent=compass(dir)+' · '+Math.round(dir)+'°';
       document.getElementById('needle').style.transform='rotate('+(dir+180)+'deg)';
+      if(courseOn && bathyData){ updateAxis(dir); }
     }
   }
   function renderWind(h){ if(grid && velLayer){ velLayer.setData(buildVel(h)); } }
