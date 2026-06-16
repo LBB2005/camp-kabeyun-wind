@@ -4,56 +4,114 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes" />
 <title>Camp Kabeyun — Alton Bay Wind</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-velocity/dist/leaflet-velocity.min.css" />
 <style>
-  :root{ --ink:#0d2233; --panel:rgba(255,255,255,0.94); --accent:#1d6fb8; }
-  *{ box-sizing:border-box; }
-  html,body{ margin:0; height:100%; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:var(--ink); }
-  #map{ position:absolute; inset:0; background:#a9d3e8; }
-  .card{ background:var(--panel); border-radius:14px; box-shadow:0 2px 12px rgba(0,0,0,0.18); backdrop-filter:blur(6px); }
-  #readout{ position:absolute; top:12px; left:12px; z-index:1000; padding:12px 14px; min-width:172px; }
-  #readout .ttl{ font-size:12px; letter-spacing:.04em; text-transform:uppercase; color:#5a7187; margin-bottom:6px; }
-  #readout .wind{ font-size:30px; font-weight:600; line-height:1; }
-  #readout .wind small{ font-size:15px; font-weight:500; color:#5a7187; }
-  #readout .row{ display:flex; align-items:center; gap:8px; margin-top:8px; font-size:14px; color:#33485c; }
-  #readout .arrow{ display:inline-block; width:26px; height:26px; transition:transform .25s ease; }
-  #readout .gust{ margin-top:4px; font-size:13px; color:#5a7187; }
-  #brand{ position:absolute; top:12px; right:12px; z-index:1000; padding:8px 12px; font-size:13px; font-weight:600; }
-  #brand span{ font-weight:400; color:#5a7187; display:block; font-size:11px; }
-  #timebar{ position:absolute; left:12px; right:12px; bottom:14px; z-index:1000; padding:12px 14px; }
-  #timebar .tline{ display:flex; align-items:center; gap:10px; }
-  #play{ flex:none; width:40px; height:40px; border-radius:50%; border:none; background:var(--accent); color:#fff; font-size:17px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
-  #play:active{ transform:scale(.94); }
-  #slider{ flex:1; -webkit-appearance:none; appearance:none; height:5px; border-radius:4px; background:#cdd9e2; outline:none; }
-  #slider::-webkit-slider-thumb{ -webkit-appearance:none; width:22px; height:22px; border-radius:50%; background:var(--accent); border:3px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.3); }
-  #slider::-moz-range-thumb{ width:22px; height:22px; border-radius:50%; background:var(--accent); border:3px solid #fff; }
-  #thour{ flex:none; min-width:78px; text-align:right; font-size:15px; font-weight:600; }
-  #tdate{ margin-top:6px; font-size:12px; color:#5a7187; text-align:center; }
-  #coords{ position:absolute; left:12px; bottom:96px; z-index:1000; padding:8px 11px; font-size:11px; color:#33485c; max-width:230px; display:none; }
-  #coords b{ color:var(--ink); }
-  .windarrow{ transition:transform .25s ease, opacity .25s ease; }
-  .leaflet-div-icon{ background:transparent; border:none; }
-  .pin{ font-size:26px; line-height:1; filter:drop-shadow(0 1px 2px rgba(0,0,0,.4)); cursor:grab; }
-  .pin.small{ font-size:15px; }
-  .lbl{ background:var(--panel); padding:2px 7px; border-radius:8px; font-size:12px; font-weight:600; box-shadow:0 1px 4px rgba(0,0,0,.2); white-space:nowrap; }
+  :root{
+    --bg:#0a1119; --glass:rgba(14,22,33,.72); --glass-brd:rgba(255,255,255,.10);
+    --accent:#46d6e6; --accent-dim:#2a8b97; --ink:#eaf3f7; --ink-dim:#8aa2b2;
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ margin:0; height:100%; font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif; background:var(--bg); color:var(--ink); overflow:hidden; }
+  #map{ position:absolute; inset:0; background:#0a1119; }
+  .leaflet-container{ background:#0a1119; }
+
+  .glass{ background:var(--glass); border:1px solid var(--glass-brd); border-radius:18px;
+          box-shadow:0 8px 30px rgba(0,0,0,.45); backdrop-filter:blur(16px) saturate(1.2); -webkit-backdrop-filter:blur(16px) saturate(1.2); }
+
+  /* Wind readout */
+  #wind{ position:absolute; top:14px; left:14px; z-index:1000; padding:16px 18px; width:186px; }
+  #wind .lbl{ font-size:11px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-dim); }
+  #wind .big{ display:flex; align-items:baseline; gap:6px; margin-top:7px; }
+  #wind .kn{ font-size:46px; font-weight:700; line-height:.9; letter-spacing:-.02em; }
+  #wind .unit{ font-size:15px; font-weight:600; color:var(--ink-dim); }
+  #wind .meta{ display:flex; align-items:center; gap:12px; margin-top:14px; }
+  #compass{ width:54px; height:54px; flex:none; }
+  #wind .dir{ font-size:18px; font-weight:600; }
+  #wind .gust{ font-size:13px; color:var(--ink-dim); margin-top:2px; }
+  #wind .gust b{ color:var(--accent); font-weight:600; }
+
+  /* Brand */
+  #brand{ position:absolute; top:14px; right:14px; z-index:1000; padding:11px 15px; text-align:right; }
+  #brand .n{ font-size:14px; font-weight:600; letter-spacing:.01em; }
+  #brand .s{ font-size:11px; color:var(--ink-dim); margin-top:1px; }
+
+  /* Layer segmented control */
+  #layers{ position:absolute; top:98px; right:14px; z-index:1000; display:flex; padding:4px; gap:2px; }
+  #layers button{ border:none; background:transparent; color:var(--ink-dim); font-family:inherit; font-size:12px; font-weight:600;
+                  padding:7px 11px; border-radius:12px; cursor:pointer; transition:.15s; }
+  #layers button.on{ background:var(--accent); color:#04222a; }
+
+  /* Legend */
+  #legend{ position:absolute; right:14px; bottom:104px; z-index:1000; padding:10px 12px; width:128px; }
+  #legend .lbl{ font-size:10px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:7px; }
+  #legend .bar{ height:8px; border-radius:4px; background:linear-gradient(90deg,#3a6ea5,#46d6e6,#5ad17a,#e8d44d,#e88b3c,#d84b4b); }
+  #legend .ticks{ display:flex; justify-content:space-between; font-size:10px; color:var(--ink-dim); margin-top:4px; }
+
+  /* Time bar */
+  #timebar{ position:absolute; left:14px; right:14px; bottom:16px; z-index:1000; padding:13px 16px; }
+  #timebar .row{ display:flex; align-items:center; gap:13px; }
+  #play{ flex:none; width:44px; height:44px; border-radius:50%; border:none; background:var(--accent); color:#04222a;
+         font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:.12s; }
+  #play:active{ transform:scale(.92); }
+  #slider{ flex:1; -webkit-appearance:none; appearance:none; height:6px; border-radius:5px; outline:none;
+           background:rgba(255,255,255,.14); }
+  #slider::-webkit-slider-thumb{ -webkit-appearance:none; width:24px; height:24px; border-radius:50%; background:var(--accent);
+           border:4px solid var(--bg); box-shadow:0 0 0 1px var(--accent), 0 2px 8px rgba(0,0,0,.5); cursor:pointer; }
+  #slider::-moz-range-thumb{ width:24px; height:24px; border-radius:50%; background:var(--accent); border:4px solid var(--bg); }
+  #thour{ flex:none; min-width:74px; text-align:right; font-size:17px; font-weight:700; letter-spacing:-.01em; }
+  #tdate{ margin-top:8px; font-size:12px; color:var(--ink-dim); text-align:center; letter-spacing:.02em; }
+
+  /* Camp marker */
+  .camp-badge{ position:relative; display:flex; align-items:center; justify-content:center; width:38px; height:38px; }
+  .camp-badge .ring{ position:absolute; inset:0; border-radius:50%; background:var(--accent); opacity:.22; animation:pulse 2.6s ease-out infinite; }
+  .camp-badge .dot{ width:34px; height:34px; border-radius:50%; background:rgba(10,17,25,.92); border:2px solid var(--accent);
+                    display:flex; align-items:center; justify-content:center; box-shadow:0 2px 10px rgba(0,0,0,.5); }
+  .camp-badge svg{ width:19px; height:19px; }
+  @keyframes pulse{ 0%{ transform:scale(.8); opacity:.35;} 70%{ transform:scale(1.7); opacity:0;} 100%{opacity:0;} }
+  .camp-lbl{ background:var(--glass)!important; border:1px solid var(--glass-brd); color:var(--ink); font-family:'Inter',sans-serif;
+             font-size:12px; font-weight:600; padding:4px 9px; border-radius:10px; box-shadow:0 2px 10px rgba(0,0,0,.4);
+             backdrop-filter:blur(10px); }
+  .camp-lbl::before{ display:none!important; }
+  .leaflet-control-zoom{ display:none; }
 </style>
 </head>
 <body>
 <div id="map"></div>
 
-<div id="readout" class="card">
-  <div class="ttl">Alton Bay wind</div>
-  <div class="wind"><span id="spd">—</span> <small>kn</small></div>
-  <div class="row"><svg class="arrow" id="arrow" viewBox="0 0 24 24"><path d="M12 2 L17 13 L12 10.5 L7 13 Z" fill="#1d6fb8"/></svg><span id="dir">—</span></div>
-  <div class="gust">gusts to <span id="gst">—</span> kn</div>
+<div id="wind" class="glass">
+  <div class="lbl">Fort Point wind</div>
+  <div class="big"><span class="kn" id="spd">—</span><span class="unit">kn</span></div>
+  <div class="meta">
+    <svg id="compass" viewBox="0 0 60 60">
+      <circle cx="30" cy="30" r="27" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="2"/>
+      <text x="30" y="12" text-anchor="middle" font-size="9" fill="#8aa2b2" font-family="Inter">N</text>
+      <g id="needle" style="transform-origin:30px 30px; transition:transform .35s ease">
+        <path d="M30 13 L36 33 L30 28 L24 33 Z" fill="#46d6e6"/>
+      </g>
+    </svg>
+    <div><div class="dir" id="dir">—</div><div class="gust">gusts <b id="gst">—</b> kn</div></div>
+  </div>
 </div>
 
-<div id="brand" class="card">Camp Kabeyun<span>Daily sailing wind</span></div>
+<div id="brand" class="glass"><div class="n">Camp Kabeyun</div><div class="s">Fort Point · Alton Bay</div></div>
 
-<div id="coords" class="card"><b>Drag the pins</b> to place them exactly, then tell Claude:<br><span id="coordtext"></span></div>
+<div id="layers" class="glass">
+  <button data-l="dark" class="on">Dark</button>
+  <button data-l="sat">Satellite</button>
+  <button data-l="topo">Topo</button>
+</div>
 
-<div id="timebar" class="card">
-  <div class="tline">
+<div id="legend" class="glass">
+  <div class="lbl">Wind · knots</div>
+  <div class="bar"></div>
+  <div class="ticks"><span>0</span><span>10</span><span>20+</span></div>
+</div>
+
+<div id="timebar" class="glass">
+  <div class="row">
     <button id="play" aria-label="Play through the day">▶</button>
     <input type="range" id="slider" min="0" max="23" value="12" step="1" />
     <div id="thour">—</div>
@@ -62,113 +120,109 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-velocity/dist/leaflet-velocity.min.js"></script>
 <script>
 (function(){
-  var DEFAULT_CAMP = [43.52598, -71.25059];
-  var DEFAULT_ISLAND = [43.53141, -71.26003];
-  var saved = {};
-  try { saved = JSON.parse(localStorage.getItem('kabeyun_pins_v2')||'{}'); } catch(e){}
-  var campLL = saved.camp || DEFAULT_CAMP;
-  var islandLL = saved.island || DEFAULT_ISLAND;
+  var CAMP = [43.52598, -71.25059];
+  var map = L.map('map', { zoomControl:false, attributionControl:false }).setView([43.527,-71.246], 13);
 
-  var map = L.map('map', { zoomControl:true, attributionControl:false }).setView(campLL, 13);
-
-  var topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom:17, subdomains:'abc' });
+  var dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { subdomains:'abcd', maxZoom:19 });
   var sat  = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom:18 });
-  var street = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19, subdomains:'abc' });
-  topo.addTo(map);
-  L.control.layers({ 'Topographic': topo, 'Satellite': sat, 'Street': street }, null, { position:'topright', collapsed:true }).addTo(map);
+  var topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { subdomains:'abc', maxZoom:17 });
+  dark.addTo(map);
+  var layers = { dark:dark, sat:sat, topo:topo }, current=dark;
+  document.querySelectorAll('#layers button').forEach(function(b){
+    b.addEventListener('click', function(){
+      document.querySelectorAll('#layers button').forEach(function(x){ x.classList.remove('on'); });
+      b.classList.add('on');
+      map.removeLayer(current); current = layers[b.dataset.l]; current.addTo(map); current.bringToBack();
+    });
+  });
 
-  function pin(html, cls){ return L.divIcon({ className:'', html:'<div class="pin '+(cls||'')+'">'+html+'</div>', iconSize:[28,28], iconAnchor:[14,26] }); }
-  var camp = L.marker(campLL, { icon: pin('⛵'), draggable:true }).addTo(map);
-  camp.bindTooltip('Camp Kabeyun (JVN)', { permanent:true, direction:'right', className:'lbl', offset:[10,-10] });
-  var island = L.marker(islandLL, { icon: pin('•','small'), draggable:true }).addTo(map);
-  island.bindTooltip('Littlemark Island', { permanent:true, direction:'right', className:'lbl', offset:[8,-6] });
+  var campIcon = L.divIcon({ className:'', iconSize:[38,38], iconAnchor:[19,19], html:
+    '<div class="camp-badge"><div class="ring"></div><div class="dot">'+
+    '<svg viewBox="0 0 24 24" fill="none"><path d="M12 3 L12 14 L4 14 Z" fill="#46d6e6"/>'+
+    '<path d="M13 6 L18 14 L13 14 Z" fill="#46d6e6" opacity=".7"/>'+
+    '<path d="M3 16 L21 16 L18.5 20 L5.5 20 Z" fill="#eaf3f7"/></svg></div></div>' });
+  L.marker(CAMP, { icon:campIcon }).addTo(map)
+    .bindTooltip('Camp Kabeyun', { permanent:true, direction:'right', className:'camp-lbl', offset:[16,0] });
 
-  var coordsBox = document.getElementById('coords');
-  var coordText = document.getElementById('coordtext');
-  function showCoords(){
-    var c = camp.getLatLng(), i = island.getLatLng();
-    coordsBox.style.display='block';
-    coordText.innerHTML = 'Camp = '+c.lat.toFixed(5)+', '+c.lng.toFixed(5)+'<br>Little Island = '+i.lat.toFixed(5)+', '+i.lng.toFixed(5);
-    localStorage.setItem('kabeyun_pins_v2', JSON.stringify({ camp:[c.lat,c.lng], island:[i.lat,i.lng] }));
-  }
-  camp.on('drag dragend', showCoords);
-  island.on('drag dragend', showCoords);
+  // ---- Wind grid for particle field ----
+  var latN=43.585, latS=43.470, lonW=-71.305, lonE=-71.190, N=6;
+  var dLat=(latN-latS)/(N-1), dLon=(lonE-lonW)/(N-1);
+  var lats=[], lons=[];
+  for(var r=0;r<N;r++){ for(var c=0;c<N;c++){ lats.push((latN-r*dLat).toFixed(4)); lons.push((lonW+c*dLon).toFixed(4)); } }
 
-  // Wind-arrow grid over the water
-  var arrows = [];
-  function buildGrid(){
-    arrows.forEach(function(a){ map.removeLayer(a.marker); });
-    arrows = [];
-    var b = { latMin:43.435, latMax:43.560, lonMin:-71.300, lonMax:-71.175 };
-    var rows=7, cols=7;
-    for(var r=0;r<rows;r++){
-      for(var c=0;c<cols;c++){
-        var lat = b.latMin + (b.latMax-b.latMin)*(r+0.5)/rows;
-        var lon = b.lonMin + (b.lonMax-b.lonMin)*(c+0.5)/cols;
-        var ic = L.divIcon({ className:'', html:'<svg class="windarrow" width="22" height="22" viewBox="0 0 24 24" style="opacity:.55"><path d="M12 3 L12 19 M12 3 L8 8 M12 3 L16 8" stroke="#0d4f86" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>', iconSize:[22,22], iconAnchor:[11,11] });
-        var m = L.marker([lat,lon], { icon:ic, interactive:false, keyboard:false }).addTo(map);
-        arrows.push({ marker:m });
-      }
+  var grid=null, campH=null, velLayer=null;
+  function compass(d){ var s=['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW']; return s[Math.round(d/22.5)%16]; }
+
+  function buildVel(h){
+    var u=new Array(N*N), v=new Array(N*N);
+    for(var i=0;i<N*N;i++){
+      var spd=grid[i].hourly.wind_speed_10m[h], dir=grid[i].hourly.wind_direction_10m[h];
+      var rad=dir*Math.PI/180;
+      u[i]=-spd*Math.sin(rad); v[i]=-spd*Math.cos(rad);
     }
+    var hdr={ nx:N, ny:N, lo1:lonW, la1:latN, lo2:lonE, la2:latS, dx:dLon, dy:dLat, refTime:'', forecastTime:0, parameterCategory:2 };
+    return [ { header:Object.assign({parameterNumber:2,parameterNumberName:'U'},hdr), data:u },
+             { header:Object.assign({parameterNumber:3,parameterNumberName:'V'},hdr), data:v } ];
   }
-  buildGrid();
 
-  var hourly = null;
-  function compass(deg){ var d=['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW']; return d[Math.round(deg/22.5)%16]; }
-  function colorFor(spd){ if(spd<4)return '#7fb2d6'; if(spd<8)return '#2f8fd6'; if(spd<13)return '#1565a8'; if(spd<18)return '#b8860b'; return '#c0392b'; }
+  function label(h){ var ap=h<12?'AM':'PM', hh=h%12; if(hh===0)hh=12; return hh+' '+ap; }
 
   function render(h){
     document.getElementById('thour').textContent = label(h);
-    if(!hourly){ return; }
-    var spd = Math.round(hourly.wind[h]);
-    var gst = Math.round(hourly.gust[h]);
-    var dir = hourly.dir[h];
-    document.getElementById('spd').textContent = spd;
-    document.getElementById('gst').textContent = gst;
-    document.getElementById('dir').textContent = compass(dir)+' · '+Math.round(dir)+'°';
-    document.getElementById('arrow').style.transform = 'rotate('+(dir+180)+'deg)';
-    document.querySelector('#readout .wind').style.color = colorFor(spd);
-    var rot = (dir+180);
-    arrows.forEach(function(a){
-      var el = a.marker.getElement(); if(!el) return;
-      var svg = el.querySelector('svg');
-      if(svg){ svg.style.transform='rotate('+rot+'deg)'; svg.style.opacity = Math.min(0.85, 0.3 + spd/25); svg.querySelector('path').setAttribute('stroke', colorFor(spd)); }
-    });
+    if(grid && velLayer){ velLayer.setData(buildVel(h)); }
+    if(campH){
+      var spd=Math.round(campH.wind[h]), gst=Math.round(campH.gust[h]), dir=campH.dir[h];
+      document.getElementById('spd').textContent=spd;
+      document.getElementById('gst').textContent=gst;
+      document.getElementById('dir').textContent=compass(dir)+' · '+Math.round(dir)+'°';
+      document.getElementById('needle').style.transform='rotate('+(dir+180)+'deg)';
+    }
   }
 
-  function label(h){ var ap = h<12?'AM':'PM'; var hh = h%12; if(hh===0)hh=12; return hh+' '+ap; }
-
-  var slider = document.getElementById('slider');
+  var slider=document.getElementById('slider');
   slider.addEventListener('input', function(){ render(parseInt(this.value,10)); });
-
-  var playing=false, timer=null;
-  var btn=document.getElementById('play');
+  var playing=false, timer=null, btn=document.getElementById('play');
   btn.addEventListener('click', function(){
-    playing=!playing; btn.textContent = playing?'⏸':'▶';
-    if(playing){ timer=setInterval(function(){ var v=(parseInt(slider.value,10)+1)%24; slider.value=v; render(v); }, 550); }
-    else { clearInterval(timer); }
+    playing=!playing; btn.textContent=playing?'❚❚':'▶';
+    if(playing){ timer=setInterval(function(){ var x=(parseInt(slider.value,10)+1)%24; slider.value=x; render(x); }, 600); }
+    else clearInterval(timer);
   });
 
-  function fetchWind(){
-    var c = camp.getLatLng();
-    var url = 'https://api.open-meteo.com/v1/forecast?latitude='+c.lat.toFixed(4)+'&longitude='+c.lng.toFixed(4)+
+  function loadGrid(){
+    var url='https://api.open-meteo.com/v1/forecast?latitude='+lats.join(',')+'&longitude='+lons.join(',')+
+      '&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=kn&timezone=America/New_York&forecast_days=1';
+    return fetch(url).then(function(r){return r.json();}).then(function(d){ grid = Array.isArray(d)?d:[d]; });
+  }
+  function loadCamp(){
+    var url='https://api.open-meteo.com/v1/forecast?latitude='+CAMP[0]+'&longitude='+CAMP[1]+
       '&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m&wind_speed_unit=kn&timezone=America/New_York&forecast_days=1';
-    fetch(url).then(function(r){return r.json();}).then(function(d){
-      hourly = { time:d.hourly.time, wind:d.hourly.wind_speed_10m, gust:d.hourly.wind_gusts_10m, dir:d.hourly.wind_direction_10m };
-      var dt = new Date(d.hourly.time[0]);
-      var opts = { weekday:'long', month:'long', day:'numeric' };
-      document.getElementById('tdate').textContent = dt.toLocaleDateString('en-US', opts) + ' · forecast in knots';
-      var now = new Date();
-      var startH = Math.min(Math.max(now.getHours(),6),18);
-      slider.value = startH; render(startH);
-    }).catch(function(){
-      document.getElementById('tdate').textContent = 'Wind data unavailable — pan/zoom still works';
+    return fetch(url).then(function(r){return r.json();}).then(function(d){
+      campH={ wind:d.hourly.wind_speed_10m, gust:d.hourly.wind_gusts_10m, dir:d.hourly.wind_direction_10m };
+      var dt=new Date(d.hourly.time[0]);
+      document.getElementById('tdate').textContent=dt.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})+' · forecast in knots';
     });
   }
-  fetchWind();
-  camp.on('dragend', fetchWind);
+
+  Promise.all([loadGrid(), loadCamp()]).then(function(){
+    velLayer = L.velocityLayer({
+      displayValues:false,
+      data: buildVel(12),
+      maxVelocity: 25,
+      velocityScale: 0.012,
+      particleAge: 70,
+      lineWidth: 2,
+      particleMultiplier: 0.0022,
+      frameRate: 18,
+      colorScale:['#3a6ea5','#46d6e6','#5ad17a','#e8d44d','#e88b3c','#d84b4b']
+    }).addTo(map);
+    var nowH=new Date().getHours(); var startH=Math.min(Math.max(nowH,6),18);
+    slider.value=startH; render(startH);
+  }).catch(function(){
+    document.getElementById('tdate').textContent='Wind data unavailable — pan/zoom still works';
+  });
 })();
 </script>
 </body>
