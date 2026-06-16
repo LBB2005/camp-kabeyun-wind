@@ -65,7 +65,7 @@
 <script>
 (function(){
   var DEFAULT_CAMP = [43.52598, -71.25059];
-  var DEFAULT_ISLAND = [43.52820, -71.25560];
+  var DEFAULT_ISLAND = [43.53141, -71.26003];
   var saved = {};
   try { saved = JSON.parse(localStorage.getItem('kabeyun_pins_v2')||'{}'); } catch(e){}
   var campLL = saved.camp || DEFAULT_CAMP;
@@ -83,7 +83,7 @@
   var camp = L.marker(campLL, { icon: pin('⛵'), draggable:true }).addTo(map);
   camp.bindTooltip('Camp Kabeyun (JVN)', { permanent:true, direction:'right', className:'lbl', offset:[10,-10] });
   var island = L.marker(islandLL, { icon: pin('•','small'), draggable:true }).addTo(map);
-  island.bindTooltip('Little Island', { permanent:true, direction:'right', className:'lbl', offset:[8,-6] });
+  island.bindTooltip('Littlemark Island', { permanent:true, direction:'right', className:'lbl', offset:[8,-6] });
 
   var coordsBox = document.getElementById('coords');
   var coordText = document.getElementById('coordtext');
