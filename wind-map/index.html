@@ -47,7 +47,7 @@
   #layers button.on{ background:var(--accent); color:#04222a; }
 
   /* Overlay toggles */
-  #overlays{ position:absolute; top:150px; right:14px; z-index:1000; display:flex; flex-direction:column; padding:5px; gap:4px; width:128px; }
+  #overlays{ position:absolute; top:88px; right:14px; z-index:1000; display:flex; flex-direction:column; padding:5px; gap:4px; width:128px; }
   #overlays button{ border:none; background:transparent; color:var(--ink); font-family:inherit; font-size:12px; font-weight:600;
                     padding:9px 11px; border-radius:12px; cursor:pointer; display:flex; align-items:center; gap:8px; transition:.15s; text-align:left; }
   #overlays button .ic{ width:9px; height:9px; border-radius:50%; border:1.5px solid var(--ink-dim); flex:none; }
@@ -119,12 +119,6 @@
 
 <div id="brand" class="glass"><div class="n">Camp Kabeyun</div><div class="s">Fort Point · Alton Bay</div></div>
 
-<div id="layers" class="glass">
-  <button data-l="dark" class="on">Dark</button>
-  <button data-l="sat">Satellite</button>
-  <button data-l="topo">Topo</button>
-</div>
-
 <div id="overlays" class="glass">
   <button id="t-depth" class="depth"><span class="ic"></span>Lake depth</button>
   <button id="t-course" class="course"><span class="ic"></span>Course spots</button>
@@ -158,18 +152,7 @@
   var CAMP = [43.52598, -71.25059];
   var map = L.map('map', { zoomControl:false, attributionControl:false }).setView([43.527,-71.246], 13);
 
-  var dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { subdomains:'abcd', maxZoom:19 });
-  var sat  = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom:18 });
-  var topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { subdomains:'abc', maxZoom:17 });
-  dark.addTo(map);
-  var layers = { dark:dark, sat:sat, topo:topo }, current=dark;
-  document.querySelectorAll('#layers button').forEach(function(b){
-    b.addEventListener('click', function(){
-      document.querySelectorAll('#layers button').forEach(function(x){ x.classList.remove('on'); });
-      b.classList.add('on');
-      map.removeLayer(current); current = layers[b.dataset.l]; current.addTo(map); current.bringToBack();
-    });
-  });
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom:18 }).addTo(map);
 
   map.on('movestart zoomstart', function(){ document.body.classList.add('zooming'); });
   map.on('moveend zoomend', function(){ document.body.classList.remove('zooming'); });
