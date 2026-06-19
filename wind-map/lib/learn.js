@@ -5,7 +5,8 @@
 
 import { CHANNEL_ID, BIAS_CLAMP } from "./config.js";
 
-const BRIEF_TAG = "Camp Kabeyun — Wind & Weather Brief";
+// Match our briefs robustly — Slack HTML-encodes "&" to "&amp;", so don't match on it.
+const isBrief = (m) => { const t = m.text || ""; return t.includes("Camp Kabeyun") && t.includes("Brief"); };
 
 // Read the last few briefs' reactions and fold them into a decayed wind bias.
 // 💨 (dash) = was windier than forecast (+), 😴 (sleeping) = calmer (−), 👍 = accurate.
@@ -17,7 +18,7 @@ export async function learnBias(botToken) {
     });
     const j = await r.json();
     if (!j.ok) return 0; // missing scope / not in channel -> stay neutral
-    const briefs = (j.messages || []).filter((m) => (m.text || "").includes(BRIEF_TAG));
+    const briefs = (j.messages || []).filter(isBrief);
     let bias = 0, decay = 1;
     for (const m of briefs.slice(0, 6)) {       // most recent briefs, newest first
       let dash = 0, sleep = 0;
