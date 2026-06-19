@@ -2,311 +2,243 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes, viewport-fit=cover" />
 <title>Camp Kabeyun — Alton Bay Wind</title>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-velocity/dist/leaflet-velocity.min.css" />
 <style>
   :root{
-    --bg:#0a1119; --glass:rgba(14,22,33,.72); --glass-brd:rgba(255,255,255,.10);
-    --accent:#46d6e6; --accent-dim:#2a8b97; --ink:#eaf3f7; --ink-dim:#8aa2b2;
+    --bg:#0a1119; --glass:rgba(13,21,32,.74); --glass-brd:rgba(255,255,255,.16);
+    --accent:#46d6e6; --ink:#eef5f8; --ink-dim:#93a7b6;
+    --go:#5fe08a; --caution:#f5b544; --nogo:#ff6363;
+    --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
+    --safe-l:env(safe-area-inset-left,0px); --safe-r:env(safe-area-inset-right,0px);
   }
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  html,body{ margin:0; height:100%; font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif; background:var(--bg); color:var(--ink); overflow:hidden; }
+  html,body{ margin:0; height:100%; font-family:'Space Grotesk',-apple-system,BlinkMacSystemFont,sans-serif; background:var(--bg); color:var(--ink); overflow:hidden; }
   #map{ position:absolute; inset:0; background:#0a1119; }
-  .leaflet-container{ background:#0a1119; }
-  .leaflet-overlay-pane canvas{ opacity:.6; }
+  .leaflet-container{ background:#0a1119; font-family:'Space Grotesk',sans-serif; }
+  .leaflet-overlay-pane canvas{ opacity:.82; }
   body.zooming .leaflet-overlay-pane canvas{ visibility:hidden; }
+  .num{ font-family:'JetBrains Mono',monospace; font-variant-numeric:tabular-nums; }
 
   .glass{ background:var(--glass); border:1px solid var(--glass-brd); border-radius:18px;
-          box-shadow:0 8px 30px rgba(0,0,0,.45); backdrop-filter:blur(16px) saturate(1.2); -webkit-backdrop-filter:blur(16px) saturate(1.2); }
+          box-shadow:0 10px 34px rgba(0,0,0,.5); backdrop-filter:blur(18px) saturate(1.1); -webkit-backdrop-filter:blur(18px) saturate(1.1); }
+  .lbl{ font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-dim); }
 
-  /* Wind readout */
-  #wind{ position:absolute; top:14px; left:14px; z-index:1000; padding:16px 18px; width:186px; }
-  #wind .lbl{ font-size:11px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-dim); }
-  #wind .big{ display:flex; align-items:baseline; gap:6px; margin-top:7px; }
-  #wind .kn{ font-size:46px; font-weight:700; line-height:.9; letter-spacing:-.02em; }
+  #wind{ position:absolute; top:calc(14px + var(--safe-t)); left:calc(14px + var(--safe-l)); z-index:1000; padding:15px 17px; width:194px; }
+  #wind .big{ display:flex; align-items:baseline; gap:7px; margin-top:9px; }
+  #wind .kn{ font-size:50px; font-weight:700; line-height:.85; letter-spacing:-.02em; }
   #wind .unit{ font-size:15px; font-weight:600; color:var(--ink-dim); }
-  #wind .meta{ display:flex; align-items:center; gap:12px; margin-top:14px; }
-  #compass{ width:54px; height:54px; flex:none; }
-  #wind .dir{ font-size:18px; font-weight:600; }
+  #wind .meta{ display:flex; align-items:center; gap:12px; margin-top:13px; }
+  #compass{ width:50px; height:50px; flex:none; }
+  #wind .dir{ font-size:17px; font-weight:600; }
   #wind .gust{ font-size:13px; color:var(--ink-dim); margin-top:2px; }
-  #wind .gust b{ color:var(--accent); font-weight:600; }
+  #wind .gust b{ color:var(--accent); font-weight:700; }
+  #verdict{ margin-top:13px; display:flex; align-items:center; gap:8px; padding:8px 11px; border-radius:12px;
+            font-size:13px; font-weight:600; background:rgba(255,255,255,.06); transition:background .3s, color .3s; }
+  #verdict .vdot{ width:9px; height:9px; border-radius:50%; background:var(--ink-dim); flex:none; transition:background .3s; }
+  #verdict.go{ color:var(--go); } #verdict.go .vdot{ background:var(--go); }
+  #verdict.caution{ color:var(--caution); } #verdict.caution .vdot{ background:var(--caution); }
+  #verdict.nogo{ color:var(--nogo); } #verdict.nogo .vdot{ background:var(--nogo); }
 
-  /* Brand */
-  #brand{ position:absolute; top:14px; right:14px; z-index:1000; padding:11px 15px; text-align:right; }
-  #brand .n{ font-size:14px; font-weight:600; letter-spacing:.01em; }
-  #brand .s{ font-size:11px; color:var(--ink-dim); margin-top:1px; }
+  #brand{ position:absolute; top:calc(14px + var(--safe-t)); right:calc(14px + var(--safe-r)); z-index:1000; padding:11px 15px; text-align:right; }
+  #brand .n{ font-size:14px; font-weight:600; } #brand .s{ font-size:11px; color:var(--ink-dim); margin-top:1px; }
 
-  /* Layer segmented control */
-  #layers{ position:absolute; top:98px; right:14px; z-index:1000; display:flex; padding:4px; gap:2px; }
-  #layers button{ border:none; background:transparent; color:var(--ink-dim); font-family:inherit; font-size:12px; font-weight:600;
-                  padding:7px 11px; border-radius:12px; cursor:pointer; transition:.15s; }
-  #layers button.on{ background:var(--accent); color:#04222a; }
+  #overlays{ position:absolute; top:calc(86px + var(--safe-t)); right:calc(14px + var(--safe-r)); z-index:1000; display:flex; flex-direction:column; padding:6px; gap:5px; width:140px; }
+  #overlays button{ border:none; background:transparent; color:var(--ink-dim); font-family:inherit; font-size:13px; font-weight:600;
+                    padding:11px 12px; border-radius:13px; cursor:pointer; display:flex; align-items:center; gap:9px; transition:.16s; }
+  #overlays button svg{ width:17px; height:17px; flex:none; }
+  #overlays button:hover{ background:rgba(255,255,255,.05); color:var(--ink); }
+  #overlays button.on{ background:rgba(70,214,230,.16); color:var(--accent); }
+  #overlays button.on.course{ background:rgba(95,224,138,.16); color:var(--go); }
 
-  /* Overlay toggles */
-  #overlays{ position:absolute; top:88px; right:14px; z-index:1000; display:flex; flex-direction:column; padding:5px; gap:4px; width:128px; }
-  #overlays button{ border:none; background:transparent; color:var(--ink); font-family:inherit; font-size:12px; font-weight:600;
-                    padding:9px 11px; border-radius:12px; cursor:pointer; display:flex; align-items:center; gap:8px; transition:.15s; text-align:left; }
-  #overlays button .ic{ width:9px; height:9px; border-radius:50%; border:1.5px solid var(--ink-dim); flex:none; }
-  #overlays button.on{ background:rgba(255,255,255,.08); }
-  #overlays button.on.depth .ic{ background:#3a9ad9; border-color:#3a9ad9; }
-  #overlays button.on.course .ic{ background:#57e08a; border-color:#57e08a; }
+  .leg{ position:absolute; right:calc(14px + var(--safe-r)); bottom:calc(108px + var(--safe-b)); z-index:1000; padding:10px 12px; width:140px; display:none; }
+  .leg.show{ display:block; }
+  .leg .bar{ height:8px; border-radius:5px; margin-top:7px; }
+  #legend .bar{ background:linear-gradient(90deg,#3a6ea5,#46d6e6,#5fe08a,#f5d44d,#f5953c,#ff6363); }
+  #depthlegend .bar{ background:linear-gradient(90deg,#cde6f5,#79c0e6,#2e83c4,#154e8a,#061d3a); }
+  .leg .ticks{ display:flex; justify-content:space-between; font-size:10px; color:var(--ink-dim); margin-top:5px; }
 
-  /* Depth legend */
-  #depthlegend{ position:absolute; right:14px; bottom:104px; z-index:1000; padding:10px 12px; width:128px; display:none; }
-  #depthlegend.show{ display:block; }
-  #depthlegend .lbl{ font-size:10px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:7px; }
-  #depthlegend .bar{ height:8px; border-radius:4px; background:linear-gradient(90deg,#cde6f5,#79c0e6,#2e83c4,#154e8a,#061d3a); }
-  #depthlegend .ticks{ display:flex; justify-content:space-between; font-size:10px; color:var(--ink-dim); margin-top:4px; }
+  #timebar{ position:absolute; left:calc(14px + var(--safe-l)); right:calc(14px + var(--safe-r)); bottom:calc(16px + var(--safe-b)); z-index:1000; padding:13px 16px; }
+  #timebar .row{ display:flex; align-items:center; gap:13px; }
+  #play{ flex:none; width:46px; height:46px; border-radius:50%; border:none; background:var(--accent); color:#042329;
+         cursor:pointer; display:flex; align-items:center; justify-content:center; transition:transform .12s, filter .16s; }
+  #play svg{ width:20px; height:20px; }
+  #play:hover{ filter:brightness(1.08); } #play:active{ transform:scale(.92); }
+  #slider{ flex:1; -webkit-appearance:none; appearance:none; height:6px; border-radius:6px; outline:none; background:rgba(255,255,255,.16); transition:background 0s; }
+  #slider::-webkit-slider-thumb{ -webkit-appearance:none; width:24px; height:24px; border-radius:50%; background:#fff;
+           box-shadow:0 0 0 4px var(--accent), 0 2px 8px rgba(0,0,0,.55); cursor:pointer; transition:transform .12s; }
+  #slider::-webkit-slider-thumb:hover{ transform:scale(1.12); }
+  #slider::-moz-range-thumb{ width:22px; height:22px; border-radius:50%; background:#fff; border:4px solid var(--accent); }
+  #thour{ flex:none; min-width:76px; text-align:right; font-size:20px; font-weight:700; letter-spacing:-.01em; }
+  #tdate{ margin-top:9px; font-size:12px; color:var(--ink-dim); text-align:center; }
 
+  .camp-badge{ position:relative; display:flex; align-items:center; justify-content:center; width:38px; height:38px; }
+  .camp-badge .ring{ position:absolute; inset:0; border-radius:50%; background:var(--accent); opacity:.55; animation:pulse 2.8s ease-out infinite; }
+  .camp-badge .dot{ width:34px; height:34px; border-radius:50%; background:rgba(10,17,25,.94); border:2px solid var(--accent);
+                    display:flex; align-items:center; justify-content:center; box-shadow:0 2px 10px rgba(0,0,0,.55); transition:border-color .3s; }
+  .camp-badge svg{ width:19px; height:19px; }
+  @keyframes pulse{ 0%{ transform:scale(.85); opacity:.55;} 70%{ transform:scale(1.85); opacity:0;} 100%{opacity:0;} }
+  .camp-lbl{ background:var(--glass)!important; border:1px solid var(--glass-brd); color:var(--ink); font-family:'Space Grotesk',sans-serif;
+             font-size:12px; font-weight:600; padding:4px 9px; border-radius:10px; box-shadow:0 2px 10px rgba(0,0,0,.4); backdrop-filter:blur(10px); }
+  .camp-lbl::before{ display:none!important; }
   .mark-badge{ display:flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:50%;
                background:#ff8c3a; border:2px solid #fff; color:#3a1c00; font-size:12px; font-weight:700; box-shadow:0 2px 8px rgba(0,0,0,.5); }
-
-  /* Legend */
-  #legend{ position:absolute; right:14px; bottom:104px; z-index:1000; padding:10px 12px; width:128px; }
-  #legend .lbl{ font-size:10px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:7px; }
-  #legend .bar{ height:8px; border-radius:4px; background:linear-gradient(90deg,#3a6ea5,#46d6e6,#5ad17a,#e8d44d,#e88b3c,#d84b4b); }
-  #legend .ticks{ display:flex; justify-content:space-between; font-size:10px; color:var(--ink-dim); margin-top:4px; }
-
-  /* Time bar */
-  #timebar{ position:absolute; left:14px; right:14px; bottom:16px; z-index:1000; padding:13px 16px; }
-  #timebar .row{ display:flex; align-items:center; gap:13px; }
-  #play{ flex:none; width:44px; height:44px; border-radius:50%; border:none; background:var(--accent); color:#04222a;
-         font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:.12s; }
-  #play:active{ transform:scale(.92); }
-  #slider{ flex:1; -webkit-appearance:none; appearance:none; height:6px; border-radius:5px; outline:none;
-           background:rgba(255,255,255,.14); }
-  #slider::-webkit-slider-thumb{ -webkit-appearance:none; width:24px; height:24px; border-radius:50%; background:var(--accent);
-           border:4px solid var(--bg); box-shadow:0 0 0 1px var(--accent), 0 2px 8px rgba(0,0,0,.5); cursor:pointer; }
-  #slider::-moz-range-thumb{ width:24px; height:24px; border-radius:50%; background:var(--accent); border:4px solid var(--bg); }
-  #thour{ flex:none; min-width:74px; text-align:right; font-size:17px; font-weight:700; letter-spacing:-.01em; }
-  #tdate{ margin-top:8px; font-size:12px; color:var(--ink-dim); text-align:center; letter-spacing:.02em; }
-
-  /* Camp marker */
-  .camp-badge{ position:relative; display:flex; align-items:center; justify-content:center; width:38px; height:38px; }
-  .camp-badge .ring{ position:absolute; inset:0; border-radius:50%; background:var(--accent); opacity:.22; animation:pulse 2.6s ease-out infinite; }
-  .camp-badge .dot{ width:34px; height:34px; border-radius:50%; background:rgba(10,17,25,.92); border:2px solid var(--accent);
-                    display:flex; align-items:center; justify-content:center; box-shadow:0 2px 10px rgba(0,0,0,.5); }
-  .camp-badge svg{ width:19px; height:19px; }
-  @keyframes pulse{ 0%{ transform:scale(.8); opacity:.35;} 70%{ transform:scale(1.7); opacity:0;} 100%{opacity:0;} }
-  .camp-lbl{ background:var(--glass)!important; border:1px solid var(--glass-brd); color:var(--ink); font-family:'Inter',sans-serif;
-             font-size:12px; font-weight:600; padding:4px 9px; border-radius:10px; box-shadow:0 2px 10px rgba(0,0,0,.4);
-             backdrop-filter:blur(10px); }
-  .camp-lbl::before{ display:none!important; }
-  .leaflet-control-zoom{ display:none; }
+  .leaflet-control-zoom, .leaflet-control-attribution{ display:none; }
+  @media (prefers-reduced-motion: reduce){ *{ animation:none!important; transition:none!important; } }
 </style>
 </head>
 <body>
 <div id="map"></div>
 
 <div id="wind" class="glass">
-  <div class="lbl">Fort Point wind</div>
-  <div class="big"><span class="kn" id="spd">—</span><span class="unit">kn</span></div>
+  <div class="lbl">Fort Point · wind</div>
+  <div class="big"><span class="kn num" id="spd">—</span><span class="unit">kn</span></div>
   <div class="meta">
     <svg id="compass" viewBox="0 0 60 60">
-      <circle cx="30" cy="30" r="27" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="2"/>
-      <text x="30" y="12" text-anchor="middle" font-size="9" fill="#8aa2b2" font-family="Inter">N</text>
-      <g id="needle" style="transform-origin:30px 30px; transition:transform .35s ease">
-        <path d="M30 13 L36 33 L30 28 L24 33 Z" fill="#46d6e6"/>
-      </g>
+      <circle cx="30" cy="30" r="27" fill="none" stroke="rgba(255,255,255,.14)" stroke-width="2"/>
+      <text x="30" y="12" text-anchor="middle" font-size="9" fill="#93a7b6" font-family="JetBrains Mono">N</text>
+      <g id="needle" style="transform-origin:30px 30px; transition:transform .35s ease"><path d="M30 13 L36 33 L30 28 L24 33 Z" fill="#46d6e6"/></g>
     </svg>
-    <div><div class="dir" id="dir">—</div><div class="gust">gusts <b id="gst">—</b> kn</div></div>
+    <div><div class="dir num" id="dir">—</div><div class="gust">gust <b class="num" id="gst">—</b> kn</div></div>
   </div>
+  <div id="verdict"><span class="vdot"></span><span id="vtext">—</span></div>
 </div>
 
 <div id="brand" class="glass"><div class="n">Camp Kabeyun</div><div class="s">Fort Point · Alton Bay</div></div>
 
 <div id="overlays" class="glass">
-  <button id="t-depth" class="depth"><span class="ic"></span>Lake depth</button>
-  <button id="t-course" class="course"><span class="ic"></span>Course spots</button>
+  <button id="t-depth" class="depth"><i data-lucide="waves"></i>Lake depth</button>
+  <button id="t-course" class="course"><i data-lucide="flag-triangle-right"></i>Course spots</button>
 </div>
 
-<div id="depthlegend" class="glass">
-  <div class="lbl">Depth · feet</div>
-  <div class="bar"></div>
-  <div class="ticks"><span>0</span><span>30</span><span>100+</span></div>
-</div>
-
-<div id="legend" class="glass">
-  <div class="lbl">Wind · knots</div>
-  <div class="bar"></div>
-  <div class="ticks"><span>0</span><span>10</span><span>20+</span></div>
-</div>
+<div id="depthlegend" class="leg glass"><div class="lbl">Depth · feet</div><div class="bar"></div><div class="ticks"><span>0</span><span>30</span><span>100+</span></div></div>
+<div id="legend" class="leg glass show"><div class="lbl">Wind · knots</div><div class="bar"></div><div class="ticks"><span>0</span><span>10</span><span>20+</span></div></div>
 
 <div id="timebar" class="glass">
   <div class="row">
-    <button id="play" aria-label="Play through the day">▶</button>
+    <button id="play" aria-label="Play through the day"><i data-lucide="play"></i></button>
     <input type="range" id="slider" min="0" max="23" value="12" step="1" />
-    <div id="thour">—</div>
+    <div id="thour" class="num">—</div>
   </div>
   <div id="tdate">loading forecast…</div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/leaflet-velocity/dist/leaflet-velocity.min.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <script>
 (function(){
-  var CAMP = [43.52598, -71.25059];
-  var map = L.map('map', { zoomControl:false, attributionControl:false }).setView([43.527,-71.246], 13);
+  var CAMP=[43.52598,-71.25059];
+  function icons(){ if(window.lucide) lucide.createIcons(); }
+  icons();
 
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom:18 }).addTo(map);
+  var map=L.map('map',{zoomControl:false,attributionControl:false}).setView([43.527,-71.246],13);
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:18}).addTo(map);
+  map.on('movestart zoomstart',function(){ document.body.classList.add('zooming'); });
+  map.on('moveend zoomend',function(){ document.body.classList.remove('zooming'); });
+  map.createPane('bathy'); map.getPane('bathy').style.zIndex=250;
+  map.createPane('course'); map.getPane('course').style.zIndex=460;
 
-  map.on('movestart zoomstart', function(){ document.body.classList.add('zooming'); });
-  map.on('moveend zoomend', function(){ document.body.classList.remove('zooming'); });
-
-  var campIcon = L.divIcon({ className:'', iconSize:[38,38], iconAnchor:[19,19], html:
+  var campIcon=L.divIcon({className:'',iconSize:[38,38],iconAnchor:[19,19],html:
     '<div class="camp-badge"><div class="ring"></div><div class="dot">'+
     '<svg viewBox="0 0 24 24" fill="none"><path d="M12 3 L12 14 L4 14 Z" fill="#46d6e6"/>'+
     '<path d="M13 6 L18 14 L13 14 Z" fill="#46d6e6" opacity=".7"/>'+
-    '<path d="M3 16 L21 16 L18.5 20 L5.5 20 Z" fill="#eaf3f7"/></svg></div></div>' });
-  L.marker(CAMP, { icon:campIcon }).addTo(map)
-    .bindTooltip('Camp Kabeyun', { permanent:true, direction:'right', className:'camp-lbl', offset:[16,0] });
+    '<path d="M3 16 L21 16 L18.5 20 L5.5 20 Z" fill="#eef5f8"/></svg></div></div>'});
+  var campMarker=L.marker(CAMP,{icon:campIcon}).addTo(map).bindTooltip('Camp Kabeyun',{permanent:true,direction:'right',className:'camp-lbl',offset:[16,0]});
 
-  // ---- Depth (bathymetry) + course-placement overlays ----
-  map.createPane('bathy'); map.getPane('bathy').style.zIndex = 250;
-  map.createPane('course'); map.getPane('course').style.zIndex = 460;
+  var compass=function(d){var s=['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];return s[Math.round(((d%360)+360)%360/22.5)%16];};
 
-  function depthColor(d){
-    var s=[[0,'#cde6f5'],[3,'#a6d6ee'],[6,'#79c0e6'],[10,'#4ea3d9'],[15,'#2e83c4'],[20,'#1f66a8'],[30,'#154e8a'],[45,'#0e3a6b'],[65,'#0a2b50'],[100,'#061d3a']];
-    var c=s[0][1]; for(var i=0;i<s.length;i++){ if(d>=s[i][0]) c=s[i][1]; } return c;
-  }
-  function midDepth(p){ return (p.a+p.b)/2; }
-  function goodForMark(p){ return p.b>=8 && p.a<=30; }   // band overlaps the 8–30 ft anchorable range
-
-  function dest(lat,lon,brng,dm){
-    var R=6371000, br=brng*Math.PI/180, la=lat*Math.PI/180, lo=lon*Math.PI/180, dr=dm/R;
-    var la2=Math.asin(Math.sin(la)*Math.cos(dr)+Math.cos(la)*Math.sin(dr)*Math.cos(br));
-    var lo2=lo+Math.atan2(Math.sin(br)*Math.sin(dr)*Math.cos(la), Math.cos(dr)-Math.sin(la)*Math.sin(la2));
-    return [la2*180/Math.PI, lo2*180/Math.PI];
-  }
-  var COURSE_CENTER = dest(CAMP[0], CAMP[1], 20, 700);   // ~700 m NNE of camp, into the open bay
-
-  var bathyData=null, depthLayer=null, courseGood=null, courseAxisG=null, depthOn=false, courseOn=false;
-
-  function ensureBathy(cb){
-    if(bathyData){ cb(); return; }
-    fetch('./bathy.geojson').then(function(r){return r.json();}).then(function(d){ bathyData=d; cb(); })
-      .catch(function(){ console.warn('depth data unavailable'); });
-  }
-  function buildDepth(){
-    depthLayer = L.geoJSON(bathyData, { pane:'bathy', style:function(f){
-      return { stroke:false, fillColor:depthColor(midDepth(f.properties)), fillOpacity:0.8 };
-    }});
-  }
-  function buildCourseGood(){
-    courseGood = L.geoJSON(bathyData, { pane:'course', filter:function(f){ return goodForMark(f.properties); },
-      style:{ stroke:false, fillColor:'#57e08a', fillOpacity:0.30 } });
-  }
-  function updateAxis(dir){
-    if(courseAxisG){ map.removeLayer(courseAxisG); }
-    var half=360;
-    var wind=dest(COURSE_CENTER[0],COURSE_CENTER[1], dir, half);
-    var lee =dest(COURSE_CENTER[0],COURSE_CENTER[1], (dir+180)%360, half);
-    var axis=L.polyline([wind,lee], { pane:'course', color:'#fff', weight:2, dashArray:'6 7', opacity:.92 });
-    var wM=L.marker(wind, { pane:'course', icon:L.divIcon({className:'',iconSize:[30,30],iconAnchor:[15,15],html:'<div class="mark-badge">W</div>'}) }).bindTooltip('Windward', {direction:'top',className:'camp-lbl'});
-    var lM=L.marker(lee,  { pane:'course', icon:L.divIcon({className:'',iconSize:[30,30],iconAnchor:[15,15],html:'<div class="mark-badge">L</div>'}) }).bindTooltip('Leeward', {direction:'bottom',className:'camp-lbl'});
-    courseAxisG=L.layerGroup([axis,wM,lM]).addTo(map);
-  }
-  function curDir(){ var h=parseInt(document.getElementById('slider').value,10); return campH?campH.dir[h]:270; }
-
-  document.getElementById('t-depth').addEventListener('click', function(){
-    var b=this; ensureBathy(function(){
-      depthOn=!depthOn; b.classList.toggle('on',depthOn);
-      document.getElementById('depthlegend').classList.toggle('show',depthOn);
-      if(depthOn){ if(!depthLayer) buildDepth(); depthLayer.addTo(map); } else if(depthLayer){ map.removeLayer(depthLayer); }
-    });
-  });
-  document.getElementById('t-course').addEventListener('click', function(){
-    var b=this; ensureBathy(function(){
-      courseOn=!courseOn; b.classList.toggle('on',courseOn);
-      if(courseOn){ if(!courseGood) buildCourseGood(); courseGood.addTo(map); updateAxis(curDir()); }
-      else { if(courseGood) map.removeLayer(courseGood); if(courseAxisG){ map.removeLayer(courseAxisG); courseAxisG=null; } }
-    });
-  });
-
-  // ---- Wind grid for particle field ----
-  var latN=44.080, latS=42.980, lonW=-71.980, lonE=-70.620, N=9;
-  var dLat=(latN-latS)/(N-1), dLon=(lonE-lonW)/(N-1);
-  var lats=[], lons=[];
-  for(var r=0;r<N;r++){ for(var c=0;c<N;c++){ lats.push((latN-r*dLat).toFixed(4)); lons.push((lonW+c*dLon).toFixed(4)); } }
-
-  var grid=null, campH=null, velLayer=null;
-  function compass(d){ var s=['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW']; return s[Math.round(d/22.5)%16]; }
-
+  // ---- forecast data (shared with the Slack brief) ----
+  var F=null, velLayer=null;
   function buildVel(h){
-    var u=new Array(N*N), v=new Array(N*N);
-    for(var i=0;i<N*N;i++){
-      var spd=grid[i].hourly.wind_speed_10m[h], dir=grid[i].hourly.wind_direction_10m[h];
-      var rad=dir*Math.PI/180;
-      u[i]=-spd*Math.sin(rad); v[i]=-spd*Math.cos(rad);
-    }
-    var hdr={ nx:N, ny:N, lo1:lonW, la1:latN, lo2:lonE, la2:latS, dx:dLon, dy:dLat, refTime:'', forecastTime:0, parameterCategory:2 };
-    return [ { header:Object.assign({parameterNumber:2,parameterNumberName:'U'},hdr), data:u },
-             { header:Object.assign({parameterNumber:3,parameterNumberName:'V'},hdr), data:v } ];
+    var g=F.grid, N=g.N, b=g.bounds, u=new Array(N*N), v=new Array(N*N);
+    for(var i=0;i<N*N;i++){ var spd=g.speed[h][i]||0, dir=g.dir[h][i]||0, rad=dir*Math.PI/180; u[i]=-spd*Math.sin(rad); v[i]=-spd*Math.cos(rad); }
+    var hdr={nx:N,ny:N,lo1:b.lonW,la1:b.latN,lo2:b.lonE,la2:b.latS,dx:(b.lonE-b.lonW)/(N-1),dy:(b.latN-b.latS)/(N-1),parameterCategory:2,refTime:'',forecastTime:0};
+    return [{header:Object.assign({parameterNumber:2},hdr),data:u},{header:Object.assign({parameterNumber:3},hdr),data:v}];
+  }
+  function windowFor(h){ return (F.windows||[]).find(function(w){ return w.hrs.indexOf(h)>=0; }); }
+  function label(h){ var ap=h<12?'AM':'PM',hh=h%12; if(hh===0)hh=12; return hh+' '+ap; }
+
+  function setVerdict(w){
+    var el=document.getElementById('verdict'), t=document.getElementById('vtext');
+    el.className=''; var ring=campMarker.getElement()&&campMarker.getElement().querySelector('.dot');
+    if(!w){ t.textContent='Off the water'; el.style.color=''; if(ring) ring.style.borderColor='var(--accent)'; return; }
+    var cls=w.tag==='GO'?'go':(w.tag==='NO-GO'?'nogo':'caution');
+    el.classList.add(cls);
+    t.textContent=w.tag+' · '+w.label.toLowerCase();
+    var col=cls==='go'?'var(--go)':cls==='nogo'?'var(--nogo)':'var(--caution)';
+    if(ring) ring.style.borderColor=col;
   }
 
-  function label(h){ var ap=h<12?'AM':'PM', hh=h%12; if(hh===0)hh=12; return hh+' '+ap; }
+  function paintSlider(h){
+    var pct=(h/23)*100;
+    document.getElementById('slider').style.background='linear-gradient(90deg,var(--accent) '+pct+'%,rgba(255,255,255,.16) '+pct+'%)';
+  }
 
   function renderReadout(h){
-    document.getElementById('thour').textContent = label(h);
-    if(campH){
-      var spd=Math.round(campH.wind[h]), gst=Math.round(campH.gust[h]), dir=campH.dir[h];
-      document.getElementById('spd').textContent=spd;
-      document.getElementById('gst').textContent=gst;
-      document.getElementById('dir').textContent=compass(dir)+' · '+Math.round(dir)+'°';
-      document.getElementById('needle').style.transform='rotate('+(dir+180)+'deg)';
-      if(courseOn && bathyData){ updateAxis(dir); }
+    document.getElementById('thour').textContent=label(h);
+    paintSlider(h);
+    if(F&&F.camp&&F.camp[h]){
+      var c=F.camp[h];
+      document.getElementById('spd').textContent=c.w==null?'—':c.w;
+      document.getElementById('gst').textContent=c.gust==null?'—':c.gust;
+      if(c.dir!=null){ document.getElementById('dir').textContent=compass(c.dir)+' · '+c.dir+'°'; document.getElementById('needle').style.transform='rotate('+(c.dir+180)+'deg)'; }
     }
+    setVerdict(windowFor(h));
+    if(courseOn && bathyData) updateAxis(curDir());
   }
-  function renderWind(h){ if(grid && velLayer){ velLayer.setData(buildVel(h)); } }
-  var windDeb=null;
-  function debounceWind(h){ if(windDeb) clearTimeout(windDeb); windDeb=setTimeout(function(){ renderWind(h); }, 130); }
+  function renderWind(h){ if(F&&F.grid&&velLayer) velLayer.setData(buildVel(h)); }
+  var windDeb=null; function debounceWind(h){ if(windDeb)clearTimeout(windDeb); windDeb=setTimeout(function(){renderWind(h);},130); }
   function render(h){ renderReadout(h); renderWind(h); }
 
   var slider=document.getElementById('slider');
-  slider.addEventListener('input', function(){ var h=parseInt(this.value,10); renderReadout(h); debounceWind(h); });
-  var playing=false, timer=null, btn=document.getElementById('play');
-  btn.addEventListener('click', function(){
-    playing=!playing; btn.textContent=playing?'❚❚':'▶';
-    if(playing){ timer=setInterval(function(){ var x=(parseInt(slider.value,10)+1)%24; slider.value=x; render(x); }, 600); }
+  slider.addEventListener('input',function(){ var h=parseInt(this.value,10); renderReadout(h); debounceWind(h); });
+  var playing=false,timer=null,btn=document.getElementById('play');
+  function setPlayIcon(n){ btn.innerHTML='<i data-lucide="'+n+'"></i>'; icons(); }
+  btn.addEventListener('click',function(){
+    playing=!playing; setPlayIcon(playing?'pause':'play');
+    if(playing){ timer=setInterval(function(){ var x=(parseInt(slider.value,10)+1)%24; slider.value=x; render(x); },460); }
     else clearInterval(timer);
   });
 
-  function loadGrid(){
-    var url='https://api.open-meteo.com/v1/forecast?latitude='+lats.join(',')+'&longitude='+lons.join(',')+
-      '&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=kn&timezone=America/New_York&forecast_days=1';
-    return fetch(url).then(function(r){return r.json();}).then(function(d){ grid = Array.isArray(d)?d:[d]; });
-  }
-  function loadCamp(){
-    var url='https://api.open-meteo.com/v1/forecast?latitude='+CAMP[0]+'&longitude='+CAMP[1]+
-      '&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m&wind_speed_unit=kn&timezone=America/New_York&forecast_days=1';
-    return fetch(url).then(function(r){return r.json();}).then(function(d){
-      campH={ wind:d.hourly.wind_speed_10m, gust:d.hourly.wind_gusts_10m, dir:d.hourly.wind_direction_10m };
-      var dt=new Date(d.hourly.time[0]);
-      document.getElementById('tdate').textContent=dt.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})+' · forecast in knots';
-    });
-  }
+  function curDir(){ var h=parseInt(slider.value,10); return (F&&F.camp&&F.camp[h]&&F.camp[h].dir!=null)?F.camp[h].dir:270; }
 
-  Promise.all([loadGrid(), loadCamp()]).then(function(){
-    velLayer = L.velocityLayer({
-      displayValues:false,
-      data: buildVel(12),
-      maxVelocity: 28,
-      velocityScale: 0.0055,
-      particleAge: 90,
-      lineWidth: 1.3,
-      particleMultiplier: 0.0008,
-      frameRate: 22,
-      colorScale:['#3a6ea5','#46d6e6','#5ad17a','#e8d44d','#e88b3c','#d84b4b']
-    }).addTo(map);
-    var nowH=new Date().getHours(); var startH=Math.min(Math.max(nowH,6),18);
+  fetch('/api/forecast').then(function(r){return r.json();}).then(function(d){
+    if(d.error) throw new Error(d.error);
+    F=d;
+    velLayer=L.velocityLayer({displayValues:false,data:buildVel(12),maxVelocity:28,velocityScale:0.0055,particleAge:90,lineWidth:1.4,particleMultiplier:0.0009,frameRate:22,
+      colorScale:['#3a6ea5','#46d6e6','#5fe08a','#f5d44d','#f5953c','#ff6363']}).addTo(map);
+    var dt=new Date(F.day.slice(0,10)+'T12:00:00');
+    document.getElementById('tdate').textContent=dt.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})+' · forecast in knots';
+    var nowH=new Date().getHours(), startH=Math.min(Math.max(nowH,6),18);
     slider.value=startH; render(startH);
-  }).catch(function(){
-    document.getElementById('tdate').textContent='Wind data unavailable — pan/zoom still works';
-  });
+  }).catch(function(e){ document.getElementById('tdate').textContent='Wind data unavailable — pan/zoom still works'; });
+
+  // ---- depth + course overlays ----
+  function depthColor(d){ var s=[[0,'#cde6f5'],[3,'#a6d6ee'],[6,'#79c0e6'],[10,'#4ea3d9'],[15,'#2e83c4'],[20,'#1f66a8'],[30,'#154e8a'],[45,'#0e3a6b'],[65,'#0a2b50'],[100,'#061d3a']]; var c=s[0][1]; for(var i=0;i<s.length;i++){ if(d>=s[i][0])c=s[i][1]; } return c; }
+  function midDepth(p){ return (p.a+p.b)/2; }
+  function goodForMark(p){ return p.b>=8 && p.a<=30; }
+  function dest(lat,lon,brng,dm){ var R=6371000,br=brng*Math.PI/180,la=lat*Math.PI/180,lo=lon*Math.PI/180,dr=dm/R; var la2=Math.asin(Math.sin(la)*Math.cos(dr)+Math.cos(la)*Math.sin(dr)*Math.cos(br)); var lo2=lo+Math.atan2(Math.sin(br)*Math.sin(dr)*Math.cos(la),Math.cos(dr)-Math.sin(la)*Math.sin(la2)); return [la2*180/Math.PI,lo2*180/Math.PI]; }
+  var COURSE_CENTER=dest(CAMP[0],CAMP[1],20,700);
+  var bathyData=null,depthLayer=null,courseGood=null,courseAxisG=null,depthOn=false,courseOn=false;
+  function ensureBathy(cb){ if(bathyData){cb();return;} fetch('./bathy.geojson').then(function(r){return r.json();}).then(function(d){bathyData=d;cb();}).catch(function(){}); }
+  function buildDepth(){ depthLayer=L.geoJSON(bathyData,{pane:'bathy',style:function(f){return{stroke:false,fillColor:depthColor(midDepth(f.properties)),fillOpacity:0.8};}}); }
+  function buildCourseGood(){ courseGood=L.geoJSON(bathyData,{pane:'course',filter:function(f){return goodForMark(f.properties);},style:{stroke:false,fillColor:'#5fe08a',fillOpacity:0.30}}); }
+  function updateAxis(dir){ if(courseAxisG)map.removeLayer(courseAxisG); var half=360; var wind=dest(COURSE_CENTER[0],COURSE_CENTER[1],dir,half),lee=dest(COURSE_CENTER[0],COURSE_CENTER[1],(dir+180)%360,half);
+    var axis=L.polyline([wind,lee],{pane:'course',color:'#fff',weight:2,dashArray:'6 7',opacity:.92});
+    var wM=L.marker(wind,{pane:'course',icon:L.divIcon({className:'',iconSize:[30,30],iconAnchor:[15,15],html:'<div class="mark-badge">W</div>'})}).bindTooltip('Windward',{direction:'top',className:'camp-lbl'});
+    var lM=L.marker(lee,{pane:'course',icon:L.divIcon({className:'',iconSize:[30,30],iconAnchor:[15,15],html:'<div class="mark-badge">L</div>'})}).bindTooltip('Leeward',{direction:'bottom',className:'camp-lbl'});
+    courseAxisG=L.layerGroup([axis,wM,lM]).addTo(map);
+  }
+  document.getElementById('t-depth').addEventListener('click',function(){ var b=this; ensureBathy(function(){ depthOn=!depthOn; b.classList.toggle('on',depthOn);
+    document.getElementById('depthlegend').classList.toggle('show',depthOn); document.getElementById('legend').classList.toggle('show',!depthOn);
+    if(depthOn){ if(!depthLayer)buildDepth(); depthLayer.addTo(map); } else if(depthLayer){ map.removeLayer(depthLayer); } }); });
+  document.getElementById('t-course').addEventListener('click',function(){ var b=this; ensureBathy(function(){ courseOn=!courseOn; b.classList.toggle('on',courseOn);
+    if(courseOn){ if(!courseGood)buildCourseGood(); courseGood.addTo(map); updateAxis(curDir()); } else { if(courseGood)map.removeLayer(courseGood); if(courseAxisG){map.removeLayer(courseAxisG);courseAxisG=null;} } }); });
 })();
 </script>
 </body>

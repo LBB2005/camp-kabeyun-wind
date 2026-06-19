@@ -6,6 +6,12 @@
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "8771", "--directory", "wind-map"],
       "port": 8771
+    },
+    {
+      "name": "windmap-dev",
+      "runtimeExecutable": "vercel",
+      "runtimeArgs": ["--cwd", "wind-map", "dev", "--listen", "8770", "--yes"],
+      "port": 8770
     }
   ]
 }
