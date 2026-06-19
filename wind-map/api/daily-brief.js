@@ -3,9 +3,9 @@
 // posts via bot token (chat.postMessage) when available else Incoming Webhook,
 // and runs the learning loop (lib/learn) when a bot token + KV are configured.
 
-import { getForecast, dirNote } from "../lib/forecast.js";
+import { getForecast } from "../lib/forecast.js";
 import { MAP_URL, TZ, CHANNEL_ID } from "../lib/config.js";
-import { getBias, recordPost, learnFromYesterday } from "../lib/learn.js";
+import { learnBias } from "../lib/learn.js";
 
 function fmtDate(iso) {
   return new Date(iso.slice(0, 10) + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: TZ });
@@ -37,6 +37,12 @@ _Sources: ${f.sources}.  React to calibrate:_  👍 spot-on · 💨 windier · �
 }
 
 async function postSlack(text) {
+  // Webhook is primary (proven, no channel-membership dependency). Bot token is a fallback.
+  const wh = process.env.SLACK_WEBHOOK_URL;
+  if (wh) {
+    const r = await fetch(wh, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+    if (r.ok) return;
+  }
   const bot = process.env.SLACK_BOT_TOKEN;
   if (bot) {
     const r = await fetch("https://slack.com/api/chat.postMessage", {
@@ -46,13 +52,9 @@ async function postSlack(text) {
     });
     const j = await r.json();
     if (!j.ok) throw new Error(`Slack chat.postMessage: ${j.error}`);
-    return j.ts;
+    return;
   }
-  const wh = process.env.SLACK_WEBHOOK_URL;
-  if (!wh) throw new Error("no Slack credential (SLACK_BOT_TOKEN or SLACK_WEBHOOK_URL)");
-  const r = await fetch(wh, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
-  if (!r.ok) throw new Error(`Slack webhook ${r.status}: ${await r.text()}`);
-  return null;
+  throw new Error("no Slack credential (SLACK_WEBHOOK_URL or SLACK_BOT_TOKEN)");
 }
 
 export default async function handler(req, res) {
@@ -71,14 +73,12 @@ export default async function handler(req, res) {
   }
 
   try {
-    if (!preview) { try { await learnFromYesterday(process.env.SLACK_BOT_TOKEN); } catch {} }
-    const bias = await getBias();
+    const bias = await learnBias(process.env.SLACK_BOT_TOKEN).catch(() => 0);
     const f = await getForecast(bias);
     const text = buildMessage(f);
-    if (preview) return res.status(200).json({ ok: true, text });
-    const ts = await postSlack(text);
-    await recordPost(ts, f.day);
-    return res.status(200).json({ ok: true, posted: true, via: process.env.SLACK_BOT_TOKEN ? "bot" : "webhook" });
+    if (preview) return res.status(200).json({ ok: true, text, bias });
+    await postSlack(text);
+    return res.status(200).json({ ok: true, posted: true, bias });
   } catch (e) {
     return res.status(500).json({ ok: false, error: String(e) });
   }

@@ -1,68 +1,35 @@
-// Learning loop: reads 👍/💨/😴 reactions on yesterday's brief and maintains a
-// rolling windBias (knots) in KV. Fully no-op until SLACK_BOT_TOKEN + KV env exist,
-// so the system runs fine on the webhook-only setup.
+// Learning loop: reads 👍/💨/😴 reactions on recent briefs and returns a rolling
+// windBias (knots). Stateless — reactions live on the Slack messages themselves,
+// so no database is needed. No-op (bias 0) until a bot token with channels:history
+// exists and the bot is in the channel.
 
 import { CHANNEL_ID, BIAS_CLAMP } from "./config.js";
 
-const KV_URL = process.env.KV_REST_API_URL;
-const KV_TOK = process.env.KV_REST_API_TOKEN;
+const BRIEF_TAG = "Camp Kabeyun — Wind & Weather Brief";
 
-async function kv(cmd) {
-  if (!KV_URL || !KV_TOK) return null;
+// Read the last few briefs' reactions and fold them into a decayed wind bias.
+// 💨 (dash) = was windier than forecast (+), 😴 (sleeping) = calmer (−), 👍 = accurate.
+export async function learnBias(botToken) {
+  if (!botToken) return 0;
   try {
-    const r = await fetch(KV_URL, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${KV_TOK}`, "Content-Type": "application/json" },
-      body: JSON.stringify(cmd),
-    });
-    const j = await r.json();
-    return j.result ?? null;
-  } catch { return null; }
-}
-
-export async function getBias() {
-  const v = await kv(["GET", "windBias"]);
-  const n = v == null ? 0 : parseFloat(v);
-  return isFinite(n) ? n : 0;
-}
-
-export async function recordPost(ts, day) {
-  if (!ts) return;
-  await kv(["SET", "lastPost", JSON.stringify({ ts, day })]);
-}
-
-async function getLastPost() {
-  const v = await kv(["GET", "lastPost"]);
-  try { return v ? JSON.parse(v) : null; } catch { return null; }
-}
-
-// Read reactions on yesterday's message and nudge the bias. Returns a summary or null.
-export async function learnFromYesterday(botToken) {
-  if (!botToken || !KV_URL) return null;
-  const last = await getLastPost();
-  if (!last?.ts) return null;
-  let reactions = [];
-  try {
-    const r = await fetch(`https://slack.com/api/reactions.get?channel=${CHANNEL_ID}&timestamp=${last.ts}`, {
+    const r = await fetch(`https://slack.com/api/conversations.history?channel=${CHANNEL_ID}&limit=40`, {
       headers: { Authorization: `Bearer ${botToken}` },
     });
     const j = await r.json();
-    if (!j.ok) return null;
-    reactions = j.message?.reactions || [];
-  } catch { return null; }
-
-  let dash = 0, sleep = 0, up = 0;
-  for (const re of reactions) {
-    if (re.name === "dash") dash = re.count;                 // 💨 windier than forecast
-    else if (re.name === "sleeping") sleep = re.count;        // 😴 calmer than forecast
-    else if (re.name === "thumbsup" || re.name === "+1") up = re.count; // 👍 accurate
+    if (!j.ok) return 0; // missing scope / not in channel -> stay neutral
+    const briefs = (j.messages || []).filter((m) => (m.text || "").includes(BRIEF_TAG));
+    let bias = 0, decay = 1;
+    for (const m of briefs.slice(0, 6)) {       // most recent briefs, newest first
+      let dash = 0, sleep = 0;
+      for (const x of (m.reactions || [])) {
+        if (x.name === "dash") dash = x.count;
+        else if (x.name === "sleeping") sleep = x.count;
+      }
+      bias += decay * 0.6 * (dash - sleep);     // + => model ran light, nudge up
+      decay *= 0.6;                              // recent days weigh more
+    }
+    return Math.max(-BIAS_CLAMP, Math.min(BIAS_CLAMP, bias));
+  } catch {
+    return 0;
   }
-  if (dash + sleep + up === 0) return null; // no feedback yet
-
-  const prev = await getBias();
-  const net = dash - sleep; // + = was windier than we said
-  let bias = (up > 0 && net === 0) ? prev * 0.6 : prev * 0.7 + 0.6 * net;
-  bias = Math.max(-BIAS_CLAMP, Math.min(BIAS_CLAMP, bias));
-  await kv(["SET", "windBias", String(bias)]);
-  return { dash, sleep, up, prev, bias };
 }
