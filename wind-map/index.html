@@ -138,8 +138,13 @@
 
   var map=L.map('map',{zoomControl:false,attributionControl:false}).setView([43.527,-71.246],13);
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:18}).addTo(map);
-  map.on('movestart zoomstart',function(){ document.body.classList.add('zooming'); });
-  map.on('moveend zoomend',function(){ document.body.classList.remove('zooming'); });
+  // Smooth zoom: fully drop the particle canvas during the zoom animation, restore just after.
+  var velRestore=null;
+  map.on('zoomstart',function(){ document.body.classList.add('zooming'); if(velLayer&&map.hasLayer(velLayer)) map.removeLayer(velLayer); });
+  map.on('zoomend',function(){ document.body.classList.remove('zooming');
+    clearTimeout(velRestore);
+    velRestore=setTimeout(function(){ if(velLayer&&!map.hasLayer(velLayer)){ velLayer.addTo(map); renderWind(parseInt(document.getElementById('slider').value,10)); } },110);
+  });
   map.createPane('bathy'); map.getPane('bathy').style.zIndex=250;
   map.createPane('course'); map.getPane('course').style.zIndex=460;
 
