@@ -31,7 +31,7 @@ _Fort Point, Alton Bay · ${fmtDate(f.day)}_${banner}
 ${lines.join("\n\n")}
 
 ${tempLine}  ·  📊 ${f.confidence}${calib}
-🗺️ *Tap for live map:* <${MAP_URL}|Alton Bay — wind · depth · course spots>
+🗺️ *Tap for live map:* <${MAP_URL}|Alton Bay — wind · depth · course axis>
 _Sources: ${f.sources}.  React to calibrate:_  👍 spot-on · 💨 windier · 😴 calmer`
   );
 }

@@ -112,7 +112,7 @@
 
 <div id="overlays" class="glass">
   <button id="t-depth" class="depth"><i data-lucide="waves"></i>Lake depth</button>
-  <button id="t-course" class="course"><i data-lucide="flag-triangle-right"></i>Course spots</button>
+  <button id="t-course" class="course"><i data-lucide="flag-triangle-right"></i>Course axis</button>
 </div>
 
 <div id="depthlegend" class="leg glass"><div class="lbl">Depth · feet</div><div class="bar"></div><div class="ticks"><span>0</span><span>30</span><span>100+</span></div></div>
@@ -226,24 +226,90 @@
   // ---- depth + course overlays ----
   function depthColor(d){ var s=[[0,'#cde6f5'],[3,'#a6d6ee'],[6,'#79c0e6'],[10,'#4ea3d9'],[15,'#2e83c4'],[20,'#1f66a8'],[30,'#154e8a'],[45,'#0e3a6b'],[65,'#0a2b50'],[100,'#061d3a']]; var c=s[0][1]; for(var i=0;i<s.length;i++){ if(d>=s[i][0])c=s[i][1]; } return c; }
   function midDepth(p){ return (p.a+p.b)/2; }
-  function goodForMark(p){ return p.b>=8 && p.a<=30; }
   function dest(lat,lon,brng,dm){ var R=6371000,br=brng*Math.PI/180,la=lat*Math.PI/180,lo=lon*Math.PI/180,dr=dm/R; var la2=Math.asin(Math.sin(la)*Math.cos(dr)+Math.cos(la)*Math.sin(dr)*Math.cos(br)); var lo2=lo+Math.atan2(Math.sin(br)*Math.sin(dr)*Math.cos(la),Math.cos(dr)-Math.sin(la)*Math.sin(la2)); return [la2*180/Math.PI,lo2*180/Math.PI]; }
-  var COURSE_CENTER=dest(CAMP[0],CAMP[1],20,700);
-  var bathyData=null,depthLayer=null,courseGood=null,courseAxisG=null,depthOn=false,courseOn=false;
-  function ensureBathy(cb){ if(bathyData){cb();return;} fetch('./bathy.geojson').then(function(r){return r.json();}).then(function(d){bathyData=d;cb();}).catch(function(){}); }
+  var bathyData=null,depthLayer=null,courseAxisG=null,depthOn=false,courseOn=false;
+  function ensureBathy(cb){ if(bathyData){cb();return;} fetch('./bathy.geojson').then(function(r){return r.json();}).then(function(d){bathyData=d;prepWater();cb();}).catch(function(){}); }
+
+  // The bathymetry doubles as a water mask: a point inside a depth polygon is water,
+  // a point outside every one is shore. Near camp the only coverage is 20ft-wide depth
+  // bands — too coarse to identify "good holding ground" — so the course layer claims
+  // only what the data actually supports: an axis that fits on open water.
+  var waterFeats=null;
+  function prepWater(){
+    waterFeats=bathyData.features.map(function(f){
+      var xs=[],ys=[];
+      (function walk(c){ if(typeof c[0]==='number'){ xs.push(c[0]); ys.push(c[1]); } else { for(var i=0;i<c.length;i++) walk(c[i]); } })(f.geometry.coordinates);
+      return { rings:f.geometry.coordinates,
+               minx:Math.min.apply(null,xs), maxx:Math.max.apply(null,xs),
+               miny:Math.min.apply(null,ys), maxy:Math.max.apply(null,ys) };
+    });
+  }
+  function ringHas(lon,lat,ring){
+    var ins=false;
+    for(var i=0,j=ring.length-1;i<ring.length;j=i++){
+      var xi=ring[i][0],yi=ring[i][1],xj=ring[j][0],yj=ring[j][1];
+      if((yi>lat)!==(yj>lat) && lon<(xj-xi)*(lat-yi)/(yj-yi)+xi) ins=!ins;
+    }
+    return ins;
+  }
+  function inWater(lon,lat){
+    if(!waterFeats) return false;
+    for(var k=0;k<waterFeats.length;k++){
+      var f=waterFeats[k];
+      if(lon<f.minx||lon>f.maxx||lat<f.miny||lat>f.maxy) continue;
+      if(!ringHas(lon,lat,f.rings[0])) continue;
+      var inHole=false;
+      for(var h=1;h<f.rings.length;h++){ if(ringHas(lon,lat,f.rings[h])){ inHole=true; break; } }
+      if(!inHole) return true;
+    }
+    return false;
+  }
+  // A point counts as usable only if it has open water all around it — being barely
+  // inside the mask puts a mark on the beach.
+  function clearWater(pt,r){
+    if(!inWater(pt[1],pt[0])) return false;
+    for(var b=0;b<360;b+=45){ var p=dest(pt[0],pt[1],b,r); if(!inWater(p[1],p[0])) return false; }
+    return true;
+  }
+  // Best windward/leeward axis for this wind: search centres out from camp, keep the
+  // one giving the longest beat with both marks in genuinely open water. Memoised per
+  // 10 degrees so scrubbing the slider doesn't re-run the search.
+  var courseCache={};
+  function findCourse(dir){
+    var key=Math.round(dir/10)*10%360;
+    if(courseCache[key]!==undefined) return courseCache[key];
+    var best=null;
+    for(var dm=300; dm<=1200; dm+=100){
+      for(var b=0; b<360; b+=10){
+        var c=dest(CAMP[0],CAMP[1],b,dm);
+        if(!clearWater(c,120)) continue;
+        for(var half=400; half>=160; half-=40){
+          var w=dest(c[0],c[1],key,half), l=dest(c[0],c[1],(key+180)%360,half);
+          if(clearWater(w,80) && clearWater(l,80)){
+            if(!best || half>best.half || (half===best.half && dm<best.dm)) best={half:half,dm:dm,w:w,l:l};
+            break;
+          }
+        }
+      }
+    }
+    courseCache[key]=best;
+    return best;
+  }
   function buildDepth(){ depthLayer=L.geoJSON(bathyData,{pane:'bathy',style:function(f){return{stroke:false,fillColor:depthColor(midDepth(f.properties)),fillOpacity:0.8};}}); }
-  function buildCourseGood(){ courseGood=L.geoJSON(bathyData,{pane:'course',filter:function(f){return goodForMark(f.properties);},style:{stroke:false,fillColor:'#5fe08a',fillOpacity:0.30}}); }
-  function updateAxis(dir){ if(courseAxisG)map.removeLayer(courseAxisG); var half=360; var wind=dest(COURSE_CENTER[0],COURSE_CENTER[1],dir,half),lee=dest(COURSE_CENTER[0],COURSE_CENTER[1],(dir+180)%360,half);
-    var axis=L.polyline([wind,lee],{pane:'course',color:'#fff',weight:2,dashArray:'6 7',opacity:.92});
-    var wM=L.marker(wind,{pane:'course',icon:L.divIcon({className:'',iconSize:[30,30],iconAnchor:[15,15],html:'<div class="mark-badge">W</div>'})}).bindTooltip('Windward',{direction:'top',className:'camp-lbl'});
-    var lM=L.marker(lee,{pane:'course',icon:L.divIcon({className:'',iconSize:[30,30],iconAnchor:[15,15],html:'<div class="mark-badge">L</div>'})}).bindTooltip('Leeward',{direction:'bottom',className:'camp-lbl'});
+  function updateAxis(dir){
+    if(courseAxisG){ map.removeLayer(courseAxisG); courseAxisG=null; }
+    var c=findCourse(dir);
+    if(!c) return;   // no axis fits on water for this wind — draw nothing rather than lie
+    var axis=L.polyline([c.w,c.l],{pane:'course',color:'#fff',weight:2,dashArray:'6 7',opacity:.92});
+    var wM=L.marker(c.w,{pane:'course',icon:L.divIcon({className:'',iconSize:[30,30],iconAnchor:[15,15],html:'<div class="mark-badge">W</div>'})}).bindTooltip('Windward',{direction:'top',className:'camp-lbl'});
+    var lM=L.marker(c.l,{pane:'course',icon:L.divIcon({className:'',iconSize:[30,30],iconAnchor:[15,15],html:'<div class="mark-badge">L</div>'})}).bindTooltip('Leeward',{direction:'bottom',className:'camp-lbl'});
     courseAxisG=L.layerGroup([axis,wM,lM]).addTo(map);
   }
   document.getElementById('t-depth').addEventListener('click',function(){ var b=this; ensureBathy(function(){ depthOn=!depthOn; b.classList.toggle('on',depthOn);
     document.getElementById('depthlegend').classList.toggle('show',depthOn); document.getElementById('legend').classList.toggle('show',!depthOn);
     if(depthOn){ if(!depthLayer)buildDepth(); depthLayer.addTo(map); } else if(depthLayer){ map.removeLayer(depthLayer); } }); });
   document.getElementById('t-course').addEventListener('click',function(){ var b=this; ensureBathy(function(){ courseOn=!courseOn; b.classList.toggle('on',courseOn);
-    if(courseOn){ if(!courseGood)buildCourseGood(); courseGood.addTo(map); updateAxis(curDir()); } else { if(courseGood)map.removeLayer(courseGood); if(courseAxisG){map.removeLayer(courseAxisG);courseAxisG=null;} } }); });
+    if(courseOn){ updateAxis(curDir()); } else if(courseAxisG){ map.removeLayer(courseAxisG); courseAxisG=null; } }); });
 })();
 </script>
 </body>

@@ -65,11 +65,13 @@ Each brief asks for a reaction: 👍 spot-on, 💨 windier than forecast, 😴 c
 
 The interesting part is where the state lives: **nowhere.** There's no database. Slack messages already store their own reactions, so the message history *is* the training data. `conversations.history` returns everything the loop needs, which means the whole system is stateless and there is no storage to provision, migrate, or pay for.
 
-## Lake depth
+## Lake depth and course placement
 
 Winnipesaukee is full of unmarked shoals, and where you can safely set a race mark depends entirely on depth. The map carries the bay's bathymetry as an overlay.
 
 ![Lake depth overlay — graduated bathymetry across Alton Bay and the Broads](docs/screenshots/depth.jpg)
+
+Those same polygons do second duty as a shoreline mask. The **course axis** overlay searches outward from camp for the longest windward/leeward beat whose two marks both sit in genuinely open water — 80 metres of clearance in every direction — and rotates it to the forecast wind for the hour you're scrubbed to. If no axis fits, it draws nothing rather than putting a mark on the beach.
 
 ## Rewriting v1
 
@@ -106,7 +108,7 @@ Every verdict threshold lives in `config.js` as a named constant rather than sca
 
 ## Known limitations
 
-- **The course-spot overlay over-selects.** It filters bathymetry to water 8–30 ft deep, but a few polygons in the source data are very coarse — one spans roughly 25 × 30 km — and they pass the depth filter, so the layer shades far more area than it should. It also draws the windward/leeward axis purely geometrically, with no land mask, so a mark can land on shore. Needs a polygon-area filter and a shoreline check.
+- **Course placement uses a shoreline mask, not a depth check.** The bathymetry around camp resolves only into 20-foot bands (0–20, 20–40), which can't identify good holding ground — so the course layer no longer claims to. Actual depth under each mark is unverified; check the depth overlay before dropping an anchor.
 - **No automated tests.** For a single-user tool this was a deliberate trade; it's the first thing I'd add before anyone else depended on it.
 - **The calibration loop currently reports a bias of 0.** That's correct behavior for accurate forecasts, but it's indistinguishable from the loop not running, which is a gap in the instrumentation.
 - **Alton Bay sits in a wind shadow** and typically reads 20–30% lower than the Broads. The models don't know this; I do, and I read the map accordingly. Encoding that correction is unfinished work.
