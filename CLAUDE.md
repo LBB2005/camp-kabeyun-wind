@@ -1,72 +1,66 @@
-# Camp Kabeyun Wind Alert
+# Camp Kabeyun Wind
 
-Automated daily wind briefing for Camp Kabeyun sailing instructors, Alton Bay, Lake Winnipesaukee, NH.
+Daily sailing brief and live wind map for Alton Bay, Lake Winnipesaukee, NH. Built as a personal decision-support tool for the camp's head of sailing — go/no-go, boat assignment, and lightning holds.
 
-## What this repo does
+## Two systems live here — only one is current
 
-Every morning at 6am EDT, a GitHub Actions workflow runs `weather_alert.py`, which:
+**Current: `wind-map/`** — a Vercel project. A cron posts the 6am brief to Slack, and a Leaflet page serves the live map. Both read the same forecast endpoint.
 
-1. Reads yesterday's Slack message emoji reactions (💨 / 👍 / 😴) as forecast accuracy feedback
-2. Fetches wind forecasts from 4 sources concurrently (NWS, Open-Meteo, Tomorrow.io, OpenWeatherMap)
-3. Uses Claude to detect forecast bias patterns from historical feedback
-4. Uses Claude to write a plain-English sailing conditions summary tailored to Lake Winnipesaukee
-5. Posts a Block Kit Slack message to #camp-weather with raw numbers + summary + Windy.com link
-6. Commits updated `history.json` back to the repo (the learning memory)
+**Retired: the Python files at the repo root** (`weather_alert.py`, `fetchers/`, `claude_summarizer.py`, `history.py`, `.github/workflows/daily-weather-alert.yml`). This was v1 — a GitHub Actions cron with a flat 4-source average and a `history.json` committed back to the repo as memory. It is kept deliberately as a record of the rewrite, and is **not running**. Don't extend it; don't treat it as the source of truth. The README explains why it was replaced.
 
-## Repo structure
+Note the two systems disagree on basics — v1 uses Alton Bay (43.4785, −71.2361) in mph, v2 uses Fort Point (43.52598, −71.25059) in knots. v2 is correct.
+
+## How the current system works
 
 ```
-weather_alert.py       # main script — run this
-claude_summarizer.py   # Anthropic API calls (pattern analysis + sailing summary)
-slack_client.py        # post messages + read reactions
-history.py             # history.json read/write
-history.json           # persistent memory — committed after each run
-fetchers/
-  nws.py               # National Weather Service (free, no key)
-  open_meteo.py        # Open-Meteo (free, no key)
-  tomorrow_io.py       # Tomorrow.io (needs TOMORROW_IO_API_KEY)
-  openweathermap.py    # OpenWeatherMap (needs OPENWEATHERMAP_API_KEY)
-.github/workflows/
-  daily-weather-alert.yml  # cron at 10:00 UTC (6am EDT)
+wind-map/
+  lib/config.js       # SINGLE SOURCE OF TRUTH — coordinates, activity windows,
+                      # source weights, verdict thresholds, bias clamp
+  lib/forecast.js     # 5-model weighted ensemble, confidence, verdict rules
+  lib/learn.js        # Slack-reaction calibration (stateless — no DB)
+  api/forecast.js     # shared endpoint; map AND brief both read this
+  api/daily-brief.js  # 6am Slack post, DST-guarded
+  index.html          # map, wind particles, depth + course-axis overlays
+  bathy.geojson       # Alton Bay bathymetry (also used as a shoreline mask)
 ```
 
-## Required secrets (GitHub repo → Settings → Secrets → Actions)
+**Change thresholds in `lib/config.js`, not in the logic.** Weights, the three activity windows, and every verdict cutoff are named constants there.
 
-| Secret | Source |
+**Never compute a forecast separately for the map and the brief.** They share `api/forecast.js` precisely because an earlier version computed them independently and they drifted. This is the bug the architecture exists to prevent.
+
+**Safety rules are asymmetric on purpose** (`lib/forecast.js`):
+- Rain probability is never allowed below the official NWS value.
+- Thunder votes count only from storm-aware sources (NWS text, HRRR weather codes).
+- The learned bias adjusts sustained wind only — it never touches thunder or gust thresholds, and the ±3 kn clamp is what guarantees it can't move a day from NO-GO to GO. Preserve that property when editing verdict logic.
+
+**The cron fires twice** (10:00 and 11:00 UTC) and the handler posts only when it is actually 6am in New Hampshire. Cron has no concept of daylight saving; the guard has to live in the handler. Don't "simplify" this to a single schedule.
+
+**Bathymetry is coarse near camp** — 20-foot depth bands only. It is used as a shoreline mask for course placement, not as a depth check. Don't reintroduce logic claiming to identify mark-settable depth from it.
+
+## Environment
+
+| Variable | Purpose |
 |---|---|
-| `SLACK_BOT_TOKEN` | api.slack.com/apps → OAuth & Permissions → Bot Token (`xoxb-...`) |
-| `SLACK_CHANNEL_ID` | Right-click `#camp-weather` in Slack → View channel details → ID at bottom |
-| `TOMORROW_IO_API_KEY` | console.tomorrow.io |
-| `OPENWEATHERMAP_API_KEY` | openweathermap.org/api |
-| `ANTHROPIC_API_KEY` | console.anthropic.com |
+| `SLACK_WEBHOOK_URL` | Primary posting path |
+| `SLACK_BOT_TOKEN` | Fallback posting; also required by the calibration loop (needs `channels:history`) |
+| `CRON_SECRET` | Protects the cron route |
 
-## Slack app setup
+Forecast sources (NWS, Open-Meteo) need no keys.
 
-1. Create app at api.slack.com/apps → "From scratch"
-2. OAuth & Permissions → Bot Token Scopes: `chat:write`, `reactions:read`
-3. Install to workspace
-4. Copy Bot OAuth Token → `SLACK_BOT_TOKEN` secret
-5. Invite bot to channel: `/invite @your-bot-name` in #camp-weather
-
-## Feedback loop
-
-React to each morning's Slack message:
-- 💨 = windier than forecast
-- 👍 = about right
-- 😴 = calmer than forecast
-
-The next morning's run reads these reactions and stores them in `history.json`. After 7+ days of feedback, Claude begins detecting patterns and adjusting its sailing summary accordingly.
-
-## Manual test
-
-Trigger via GitHub Actions → daily-weather-alert → Run workflow, or locally:
+## Running and testing
 
 ```bash
-pip install -r requirements.txt
-export SLACK_BOT_TOKEN=xoxb-...
-export SLACK_CHANNEL_ID=C0XXX
-export TOMORROW_IO_API_KEY=...
-export OPENWEATHERMAP_API_KEY=...
-export ANTHROPIC_API_KEY=...
-python weather_alert.py
+cd wind-map && vercel dev
 ```
+
+Preview the brief without posting to Slack:
+
+```bash
+curl "localhost:3000/api/daily-brief?preview=1"
+```
+
+`?force=1` bypasses the 6am guard. There is no test suite.
+
+## Deploys
+
+The Vercel project is **not connected to this GitHub repo** — pushing does not deploy. Ship with `vercel` from `wind-map/`.
